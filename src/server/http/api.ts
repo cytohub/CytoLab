@@ -15,6 +15,7 @@ import {
 } from '@/domain/errors';
 import type { AuthContext } from '../auth/context';
 import { authFromRequest } from '../auth/request';
+import { sessionCookieName } from '../auth/sessions';
 import { env } from '../env';
 import { logger, type Logger } from '../lib/logger';
 
@@ -25,11 +26,11 @@ const MUTATING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 export class ApiResult<T> {
   constructor(
     readonly data: T,
-    readonly meta?: Record<string, unknown>,
+    readonly meta?: Record<string, unknown> | object,
     readonly status = 200,
   ) {}
 }
-export const ok = <T>(data: T, meta?: Record<string, unknown>) => new ApiResult(data, meta);
+export const ok = <T>(data: T, meta?: Record<string, unknown> | object) => new ApiResult(data, meta);
 export const created = <T>(data: T) => new ApiResult(data, undefined, 201);
 
 type RouteParams = Record<string, string>;
@@ -55,19 +56,29 @@ export interface PublicArgs<P> extends BaseArgs<P> {
 // ---------------------------------------------------------------------------
 
 /**
- * CSRF defense for cookie-authenticated requests: a mutating request must come
- * from our own origin. Non-browser clients send neither header and are allowed
- * (they cannot ride a victim's cookies). SameSite=Lax cookies are a second layer.
+ * CSRF defense. A mutating request must not originate from another site.
+ *
+ * When the request carries our session cookie it is browser-driven, and browsers
+ * always send `Origin` on such requests — so we require a same-origin `Origin`
+ * (a missing or mismatched one is rejected). Requests without the session cookie
+ * (future bearer-token/service clients) cannot ride a victim's cookies and are
+ * exempt from the header requirement; a present cross-origin header is still
+ * rejected. SameSite=Lax cookies are a second layer.
  */
 export function assertSameOrigin(req: NextRequest): void {
   if (!MUTATING_METHODS.has(req.method)) return;
   const origin = req.headers.get('origin');
+  const allowed = new Set([req.nextUrl.origin, new URL(env().APP_URL).origin]);
+
   if (origin) {
-    const allowed = new Set([req.nextUrl.origin, new URL(env().APP_URL).origin]);
     if (!allowed.has(origin)) throw new ForbiddenError('Cross-origin request rejected');
     return;
   }
   if (req.headers.get('sec-fetch-site') === 'cross-site') throw new ForbiddenError('Cross-origin request rejected');
+
+  // Cookie-authenticated mutation with no Origin header: reject (a real browser
+  // would have sent one). This closes the header-stripping gap for session auth.
+  if (req.cookies.get(sessionCookieName())) throw new ForbiddenError('Missing Origin on a session-authenticated request');
 }
 
 export function zodFieldErrors(error: ZodError): FieldErrors {
