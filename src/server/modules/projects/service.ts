@@ -13,14 +13,13 @@ import { canTransitionProject, projectTransitionEffects } from '@/domain/workflo
 import { routes } from '@/lib/routes';
 import { actorOf, type AuthContext } from '../../auth/context';
 import { authorize } from '../../authz';
-import { db, type Transaction } from '../../db/client';
+import { db } from '../../db/client';
 import { experiments, milestones, projects, researchAreas, teams, users } from '../../db/schema';
 import { registerEntity, setEntityDeleted, syncEntityLabel } from '../../platform/entities';
 import { recordEvent } from '../../platform/events';
-import { nextSequenceValue } from '../../platform/sequences';
 import { indexExperiments, indexProjects } from '../search/indexers';
 import { offset, pageMeta, type Paginated } from '../shared/pagination';
-import { toUserSummary, type TagSummary, type TeamSummary, type UserSummary } from '../shared/presenters';
+import { toUserSummary, type TeamSummary, type UserSummary } from '../shared/presenters';
 import { loadProjectMetrics, type ProjectMetrics } from './metrics';
 
 export interface ProjectListItem {
@@ -286,11 +285,13 @@ export async function createProject(ctx: AuthContext, input: CreateProjectData):
   authorize(ctx, 'project:create');
   await assertRefsExist(ctx, input);
 
-  const projectId = await db().transaction(async (tx) => {
-    const id = crypto.randomUUID();
-    const now = new Date();
-    await registerEntity(tx, { id, orgId: ctx.orgId, entityType: 'project', displayId: input.code, title: input.name, createdBy: ctx.userId, createdAt: now });
-    try {
+  const projectId = await db()
+    .transaction(async (tx) => {
+      const id = crypto.randomUUID();
+      const now = new Date();
+      // Both the entity registry and the projects table enforce code uniqueness;
+      // a violation on either is translated to a validation error below.
+      await registerEntity(tx, { id, orgId: ctx.orgId, entityType: 'project', displayId: input.code, title: input.name, createdBy: ctx.userId, createdAt: now });
       await tx.insert(projects).values({
         id,
         orgId: ctx.orgId,
@@ -309,19 +310,19 @@ export async function createProject(ctx: AuthContext, input: CreateProjectData):
         createdBy: ctx.userId,
         updatedBy: ctx.userId,
       });
-    } catch (err) {
+      await recordEvent(tx, ctx, {
+        action: 'project.created',
+        entityId: id,
+        projectId: id,
+        payload: { code: input.code, name: input.name },
+        audit: { action: 'create', resourceType: 'project', resourceId: id, changes: null },
+      });
+      await indexProjects(tx, ctx.orgId, [id]);
+      return id;
+    })
+    .catch((err) => {
       throw translateProjectConflict(err);
-    }
-    await recordEvent(tx, ctx, {
-      action: 'project.created',
-      entityId: id,
-      projectId: id,
-      payload: { code: input.code, name: input.name },
-      audit: { action: 'create', resourceType: 'project', resourceId: id, changes: null },
     });
-    await indexProjects(tx, ctx.orgId, [id]);
-    return id;
-  });
 
   return getProject(ctx, projectId);
 }
@@ -416,7 +417,10 @@ export async function deleteProject(ctx: AuthContext, ref: string): Promise<void
 }
 
 function translateProjectConflict(err: unknown): unknown {
-  if (err && typeof err === 'object' && 'code' in err && (err as { code?: string }).code === '23505') {
+  // Drizzle wraps the driver error; the pg code may be on the error or its cause.
+  const codes = [err, (err as { cause?: unknown })?.cause]
+    .map((e) => (e && typeof e === 'object' ? (e as { code?: string }).code : undefined));
+  if (codes.includes('23505')) {
     return new ValidationError('That project code is already in use', { code: ['Choose a different project code'] });
   }
   return err;

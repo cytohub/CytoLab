@@ -53,7 +53,8 @@ class LocalDiskStorage implements StorageProvider {
 let provider: StorageProvider | undefined;
 
 export function storage(): StorageProvider {
-  provider ??= new LocalDiskStorage(path.resolve(process.cwd(), env().STORAGE_DIR));
+  // turbopackIgnore keeps this runtime path resolution from tracing the whole project.
+  provider ??= new LocalDiskStorage(path.resolve(/* turbopackIgnore: true */ process.cwd(), env().STORAGE_DIR));
   return provider;
 }
 

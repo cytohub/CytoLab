@@ -1,4 +1,4 @@
-import { and, eq } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { addDays, todayIn } from '../../src/domain/dates';
 import type { ExperimentStatus } from '../../src/domain/enums';
 import { formatExperimentId, formatMilestoneId, formatSampleId } from '../../src/domain/identifiers';

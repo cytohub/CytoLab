@@ -171,7 +171,7 @@ export async function updateExperiment(ctx: AuthContext, experimentId: string, i
   const patch: Record<string, unknown> = { ...rest };
   if (input.teamId === undefined && input.projectId && project) patch.teamId = project.teamId;
 
-  return db().transaction(async (tx) => {
+  await db().transaction(async (tx) => {
     const now = new Date();
     if (statusChanging) {
       const effects = experimentTransitionEffects(
@@ -221,8 +221,11 @@ export async function updateExperiment(ctx: AuthContext, experimentId: string, i
     }
 
     if (input.name || input.projectId) await indexExperiments(tx, ctx.orgId, [experimentId]);
-    return getExperimentDetail(ctx, experimentId);
   });
+
+  // Read after the transaction commits (getExperimentDetail uses the pool, so a
+  // read inside the transaction would not see the just-written row).
+  return getExperimentDetail(ctx, experimentId);
 }
 
 export async function deleteExperiment(ctx: AuthContext, experimentId: string): Promise<void> {
