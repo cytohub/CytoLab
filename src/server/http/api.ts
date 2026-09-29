@@ -1,0 +1,219 @@
+import 'server-only';
+import { NextResponse, type NextRequest } from 'next/server';
+import { ZodError, type z } from 'zod';
+import {
+  AppError,
+  BadRequestError,
+  ConflictError,
+  ForbiddenError,
+  PayloadTooLargeError,
+  UnauthorizedError,
+  UnsupportedMediaTypeError,
+  ValidationError,
+  type ApiErrorBody,
+  type FieldErrors,
+} from '@/domain/errors';
+import type { AuthContext } from '../auth/context';
+import { authFromRequest } from '../auth/request';
+import { env } from '../env';
+import { logger, type Logger } from '../lib/logger';
+
+const MAX_JSON_BYTES = 1024 * 1024;
+const MUTATING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+
+/** A handler's return value: data plus optional pagination meta and status. */
+export class ApiResult<T> {
+  constructor(
+    readonly data: T,
+    readonly meta?: Record<string, unknown>,
+    readonly status = 200,
+  ) {}
+}
+export const ok = <T>(data: T, meta?: Record<string, unknown>) => new ApiResult(data, meta);
+export const created = <T>(data: T) => new ApiResult(data, undefined, 201);
+
+type RouteParams = Record<string, string>;
+interface RouteContextLike<P> {
+  params: Promise<P>;
+}
+
+interface BaseArgs<P> {
+  req: NextRequest;
+  params: P;
+  requestId: string;
+  log: Logger;
+}
+export interface AuthedArgs<P> extends BaseArgs<P> {
+  ctx: AuthContext;
+}
+export interface PublicArgs<P> extends BaseArgs<P> {
+  ctx: AuthContext | null;
+}
+
+// ---------------------------------------------------------------------------
+// Request guards
+// ---------------------------------------------------------------------------
+
+/**
+ * CSRF defense for cookie-authenticated requests: a mutating request must come
+ * from our own origin. Non-browser clients send neither header and are allowed
+ * (they cannot ride a victim's cookies). SameSite=Lax cookies are a second layer.
+ */
+export function assertSameOrigin(req: NextRequest): void {
+  if (!MUTATING_METHODS.has(req.method)) return;
+  const origin = req.headers.get('origin');
+  if (origin) {
+    const allowed = new Set([req.nextUrl.origin, new URL(env().APP_URL).origin]);
+    if (!allowed.has(origin)) throw new ForbiddenError('Cross-origin request rejected');
+    return;
+  }
+  if (req.headers.get('sec-fetch-site') === 'cross-site') throw new ForbiddenError('Cross-origin request rejected');
+}
+
+export function zodFieldErrors(error: ZodError): FieldErrors {
+  const fields: FieldErrors = {};
+  for (const issue of error.issues) {
+    const key = issue.path.length ? issue.path.join('.') : '_form';
+    (fields[key] ??= []).push(issue.message);
+  }
+  return fields;
+}
+
+export async function parseJson<S extends z.ZodType>(req: NextRequest, schema: S): Promise<z.output<S>> {
+  const contentType = req.headers.get('content-type') ?? '';
+  if (!contentType.toLowerCase().includes('application/json')) {
+    throw new UnsupportedMediaTypeError('Send the request body as application/json');
+  }
+  const declared = Number(req.headers.get('content-length') ?? 0);
+  if (declared > MAX_JSON_BYTES) throw new PayloadTooLargeError(MAX_JSON_BYTES);
+
+  const text = await req.text();
+  if (text.length > MAX_JSON_BYTES) throw new PayloadTooLargeError(MAX_JSON_BYTES);
+
+  let body: unknown;
+  try {
+    body = text ? JSON.parse(text) : {};
+  } catch {
+    throw new BadRequestError('Request body is not valid JSON');
+  }
+  return validate(schema, body);
+}
+
+export function parseQuery<S extends z.ZodType>(req: NextRequest, schema: S): z.output<S> {
+  const raw: Record<string, string | string[]> = {};
+  for (const [key, value] of req.nextUrl.searchParams) {
+    const existing = raw[key];
+    raw[key] = existing === undefined ? value : Array.isArray(existing) ? [...existing, value] : [existing, value];
+  }
+  return validate(schema, raw);
+}
+
+export function validate<S extends z.ZodType>(schema: S, value: unknown): z.output<S> {
+  const result = schema.safeParse(value);
+  if (!result.success) throw new ValidationError('Some fields are invalid', zodFieldErrors(result.error));
+  return result.data;
+}
+
+// ---------------------------------------------------------------------------
+// Error mapping
+// ---------------------------------------------------------------------------
+
+interface PgErrorLike {
+  code?: string;
+  constraint_name?: string;
+  constraint?: string;
+}
+
+function pgError(err: unknown): PgErrorLike | null {
+  const candidates = [err, (err as { cause?: unknown })?.cause];
+  for (const c of candidates) {
+    if (c && typeof c === 'object' && typeof (c as PgErrorLike).code === 'string' && /^[0-9A-Z]{5}$/.test((c as PgErrorLike).code!)) {
+      return c as PgErrorLike;
+    }
+  }
+  return null;
+}
+
+export function toAppError(err: unknown): AppError | null {
+  if (err instanceof AppError) return err;
+  if (err instanceof ZodError) return new ValidationError('Some fields are invalid', zodFieldErrors(err));
+  const pg = pgError(err);
+  if (pg?.code === '23505') {
+    return new ConflictError('A record with the same unique value already exists', {
+      constraint: pg.constraint_name ?? pg.constraint,
+    });
+  }
+  if (pg?.code === '23503') return new BadRequestError('A referenced record does not exist');
+  if (pg?.code === '23514') return new ValidationError('A value violates a data rule');
+  return null;
+}
+
+function errorResponse(err: AppError, requestId: string): NextResponse<ApiErrorBody> {
+  const body: ApiErrorBody = {
+    error: { code: err.code, message: err.message, ...(err.details ? { details: err.details } : {}), requestId },
+  };
+  const res = NextResponse.json(body, { status: err.status });
+  const retryAfter = err.details?.retryAfterSeconds;
+  if (typeof retryAfter === 'number') res.headers.set('Retry-After', String(retryAfter));
+  return res;
+}
+
+function finalize(res: Response, requestId: string): Response {
+  res.headers.set('x-request-id', requestId);
+  if (!res.headers.has('cache-control')) res.headers.set('cache-control', 'no-store');
+  return res;
+}
+
+function toResponse(result: unknown): Response {
+  if (result instanceof Response) return result;
+  if (result instanceof ApiResult) {
+    return NextResponse.json(
+      result.meta ? { data: result.data, meta: result.meta } : { data: result.data },
+      { status: result.status },
+    );
+  }
+  if (result === undefined) return new Response(null, { status: 204 });
+  return NextResponse.json({ data: result });
+}
+
+// ---------------------------------------------------------------------------
+// Route wrappers
+// ---------------------------------------------------------------------------
+
+function wrap<P extends RouteParams, A>(
+  requireAuth: boolean,
+  handler: (args: A) => Promise<unknown>,
+) {
+  return async (req: NextRequest, routeContext: RouteContextLike<P>): Promise<Response> => {
+    const requestId = req.headers.get('x-request-id')?.slice(0, 64) || crypto.randomUUID();
+    const log = logger.child({ requestId, method: req.method, path: req.nextUrl.pathname });
+    try {
+      assertSameOrigin(req);
+      const ctx = await authFromRequest(req, requestId);
+      if (requireAuth && !ctx) throw new UnauthorizedError();
+      const params = (await routeContext.params) ?? ({} as P);
+      const result = await handler({ req, params, ctx, requestId, log } as A);
+      return finalize(toResponse(result), requestId);
+    } catch (err) {
+      const appError = toAppError(err);
+      if (appError) {
+        if (appError.status >= 500) log.error('request failed', { err });
+        else log.debug('request rejected', { code: appError.code, status: appError.status });
+        return finalize(errorResponse(appError, requestId), requestId);
+      }
+      log.error('unhandled error', { err });
+      const internal = new AppError('internal_error', 'Something went wrong on our side', 500);
+      return finalize(errorResponse(internal, requestId), requestId);
+    }
+  };
+}
+
+/** Authenticated API route. */
+export function api<P extends RouteParams = RouteParams>(handler: (args: AuthedArgs<P>) => Promise<unknown>) {
+  return wrap<P, AuthedArgs<P>>(true, handler);
+}
+
+/** Route reachable without a session (sign-in, health). The context is provided when present. */
+export function publicApi<P extends RouteParams = RouteParams>(handler: (args: PublicArgs<P>) => Promise<unknown>) {
+  return wrap<P, PublicArgs<P>>(false, handler);
+}
