@@ -9,7 +9,7 @@ import { listActivity } from '@/server/modules/activity/service';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/feedback';
 import { ProgressBar } from '@/components/ui/progress';
-import { PageContainer, PageHeader, SectionHeading } from '@/components/ui/page';
+import { PageContainer, PageHeader } from '@/components/ui/page';
 import { HealthBadge } from '@/components/domain/status';
 import { ActivityList } from '@/components/domain/activity-item';
 import { IdTag } from '@/components/domain/misc';

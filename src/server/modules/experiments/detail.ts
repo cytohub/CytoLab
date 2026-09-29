@@ -33,6 +33,7 @@ import {
   users,
 } from '../../db/schema';
 import { toUserSummary, type TagSummary, type TeamSummary, type UserSummary } from '../shared/presenters';
+import { resolveExperimentId } from './service';
 
 export interface ConditionView {
   id: string;
@@ -319,4 +320,9 @@ export async function getExperimentDetail(ctx: AuthContext, experimentId: string
     createdBy: creatorRow ? user({ id: creatorRow.id, name: creatorRow.name, title: creatorRow.title, email: creatorRow.email, color: creatorRow.color, avatar: creatorRow.avatar }) : null,
     permissions: { canEdit, allowedTransitions: canEdit ? [...EXPERIMENT_TRANSITIONS[row.status]] : [] },
   };
+}
+
+/** Resolves a display ID or UUID and returns the full experiment detail. */
+export async function getExperimentByRef(ctx: AuthContext, ref: string): Promise<ExperimentDetail> {
+  return getExperimentDetail(ctx, await resolveExperimentId(ctx, ref));
 }
