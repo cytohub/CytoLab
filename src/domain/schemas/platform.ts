@@ -22,6 +22,7 @@ export const createCommentSchema = z.object({
   body: requiredText(5_000, 'Comment'),
   parentId: uuid.nullish().transform((v) => v ?? null),
 });
+export type CreateCommentInput = z.output<typeof createCommentSchema>;
 export const updateCommentSchema = z.object({ body: requiredText(5_000, 'Comment') });
 
 export const setTagsSchema = z.object({ tagIds: z.array(uuid).max(20) });
@@ -30,11 +31,13 @@ export const createTagSchema = z.object({
   name: requiredText(40, 'Tag name'),
   color: colorToken.default('slate'),
 });
+export type CreateTagInput = z.output<typeof createTagSchema>;
 
 export const createLinkSchema = z.object({
   targetId: uuid,
   linkType: z.enum(LINK_TYPES).default('related_to'),
 });
+export type CreateLinkInput = z.output<typeof createLinkSchema>;
 
 // ---------------------------------------------------------------------------
 // Directory
@@ -47,7 +50,7 @@ export const createMemberSchema = z.object({
   role: z.enum(ROLES).default('researcher'),
   teamIds: z.array(uuid).max(20).default([]),
 });
-export type CreateMemberInput = z.input<typeof createMemberSchema>;
+export type CreateMemberInput = z.output<typeof createMemberSchema>;
 
 export const updateMemberSchema = z.object({
   name: requiredText(120, 'Name').optional(),
@@ -55,24 +58,29 @@ export const updateMemberSchema = z.object({
   role: z.enum(ROLES).optional(),
   status: z.enum(['active', 'suspended'] as const).optional(),
 });
+export type UpdateMemberInput = z.output<typeof updateMemberSchema>;
 
 export const updateProfileSchema = z.object({
   name: requiredText(120, 'Name').optional(),
   title: optionalText(120).optional(),
   avatarColor: colorToken.optional(),
 });
+export type UpdateProfileInput = z.output<typeof updateProfileSchema>;
 
 export const createTeamSchema = z.object({
   name: requiredText(80, 'Team name'),
   description: optionalText(1_000),
   color: colorToken.default('blue'),
 });
+export type CreateTeamInput = z.output<typeof createTeamSchema>;
 export const updateTeamSchema = createTeamSchema.partial();
+export type UpdateTeamInput = z.output<typeof updateTeamSchema>;
 
 export const addTeamMemberSchema = z.object({
   userId: uuid,
   role: z.enum(TEAM_ROLES).default('member'),
 });
+export type AddTeamMemberInput = z.output<typeof addTeamMemberSchema>;
 
 // ---------------------------------------------------------------------------
 // Configuration
