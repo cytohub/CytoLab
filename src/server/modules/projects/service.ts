@@ -123,7 +123,11 @@ function toListItem(row: ProjectRow, metrics: ProjectMetrics): ProjectListItem {
   };
 }
 
-export async function listProjects(ctx: AuthContext, query: ListProjectsQuery): Promise<Paginated<ProjectListItem>> {
+export async function listProjects(ctx: AuthContext, query: Partial<ListProjectsQuery> = {}): Promise<Paginated<ProjectListItem>> {
+  const page = query.page ?? 1;
+  const pageSize = query.pageSize ?? 25;
+  const sort = query.sort ?? { field: 'updatedAt' as const, direction: 'desc' as const };
+
   const filters: SQL[] = [eq(projects.orgId, ctx.orgId), isNull(projects.deletedAt)];
   if (query.status?.length) filters.push(inArray(projects.status, query.status));
   if (query.teamId?.length) filters.push(inArray(projects.teamId, query.teamId));
@@ -137,18 +141,18 @@ export async function listProjects(ctx: AuthContext, query: ListProjectsQuery): 
 
   const [totals] = await db().select({ total: count() }).from(projects).where(where);
   const total = totals?.total ?? 0;
-  const sortColumn = SORT_COLUMNS[query.sort.field];
-  const direction = query.sort.direction === 'asc' ? asc : desc;
+  const sortColumn = SORT_COLUMNS[sort.field];
+  const direction = sort.direction === 'asc' ? asc : desc;
 
   const rows = await baseSelect()
     .where(where)
     .orderBy(direction(sortColumn), desc(projects.id))
-    .limit(query.pageSize)
-    .offset(offset(query.page, query.pageSize));
+    .limit(pageSize)
+    .offset(offset(page, pageSize));
 
   const metrics = await loadProjectMetrics(ctx, rows);
   const items = rows.map((row) => toListItem(row, metrics.get(row.id)!));
-  return { items, meta: pageMeta(query.page, query.pageSize, total) };
+  return { items, meta: pageMeta(page, pageSize, total) };
 }
 
 async function loadProjectRow(ctx: AuthContext, ref: string): Promise<ProjectRow> {

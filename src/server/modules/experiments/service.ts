@@ -143,9 +143,12 @@ async function loadTagsFor(ctx: AuthContext, experimentIds: string[]): Promise<M
   return map;
 }
 
-export async function listExperiments(ctx: AuthContext, query: ListExperimentsQuery): Promise<Paginated<ExperimentListItem>> {
+export async function listExperiments(ctx: AuthContext, query: Partial<ListExperimentsQuery> = {}): Promise<Paginated<ExperimentListItem>> {
   const today = todayIn(ctx.org.timezone);
   const now = new Date();
+  const page = query.page ?? 1;
+  const pageSize = query.pageSize ?? 25;
+  const sort = query.sort ?? { field: 'updatedAt' as const, direction: 'desc' as const };
   const filters: SQL[] = [eq(experiments.orgId, ctx.orgId), isNull(experiments.deletedAt)];
 
   if (query.status?.length) filters.push(inArray(experiments.status, query.status));
@@ -173,18 +176,18 @@ export async function listExperiments(ctx: AuthContext, query: ListExperimentsQu
 
   const [totals] = await db().select({ total: count() }).from(experiments).where(where);
   const total = totals?.total ?? 0;
-  const sortColumn = SORT_COLUMNS[query.sort.field];
-  const direction = query.sort.direction === 'asc' ? asc : desc;
+  const sortColumn = SORT_COLUMNS[sort.field];
+  const direction = sort.direction === 'asc' ? asc : desc;
 
   const rows = await listSelect()
     .where(where)
     .orderBy(direction(sortColumn), desc(experiments.id))
-    .limit(query.pageSize)
-    .offset(offset(query.page, query.pageSize));
+    .limit(pageSize)
+    .offset(offset(page, pageSize));
 
   const tagMap = await loadTagsFor(ctx, rows.map((r) => r.id));
   const items = rows.map((row) => toListItem(ctx, row, tagMap, today));
-  return { items, meta: pageMeta(query.page, query.pageSize, total ?? 0) };
+  return { items, meta: pageMeta(page, pageSize, total) };
 }
 
 /** Compact list used by project detail and related-experiment panels. */

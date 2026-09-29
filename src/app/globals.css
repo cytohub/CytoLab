@@ -48,17 +48,18 @@
   --tone-muted-fg: oklch(0.6 0.006 260);
   --tone-muted-bg: oklch(0.955 0.003 260);
 
-  /* Chart categorical palette (accessible, distinct in both themes) */
-  --chart-1: oklch(0.58 0.17 274);
-  --chart-2: oklch(0.65 0.14 200);
-  --chart-3: oklch(0.7 0.15 155);
-  --chart-4: oklch(0.75 0.14 90);
-  --chart-5: oklch(0.7 0.16 40);
-  --chart-6: oklch(0.62 0.2 350);
-  --chart-7: oklch(0.6 0.17 320);
-  --chart-8: oklch(0.68 0.1 230);
+  /* Chart categorical palette — validated fixed hue order (see dataviz skill).
+     Assigned in order, never cycled; adjacent pairs clear CVD gates in both modes. */
+  --chart-1: #2a78d6; /* blue */
+  --chart-2: #eb6834; /* orange */
+  --chart-3: #1baf7a; /* aqua */
+  --chart-4: #eda100; /* yellow */
+  --chart-5: #e87ba4; /* magenta */
+  --chart-6: #008300; /* green */
+  --chart-7: #4a3aa7; /* violet */
+  --chart-8: #e34948; /* red */
   --chart-grid: oklch(0.92 0.004 260);
-  --chart-axis: oklch(0.6 0.008 260);
+  --chart-axis: oklch(0.55 0.008 260);
 
   --shadow-sm: 0 1px 2px oklch(0.2 0.02 260 / 0.06), 0 1px 1px oklch(0.2 0.02 260 / 0.04);
   --shadow-md: 0 4px 12px oklch(0.2 0.02 260 / 0.08), 0 2px 4px oklch(0.2 0.02 260 / 0.05);
@@ -108,16 +109,16 @@
     --tone-muted-fg: oklch(0.62 0.008 264);
     --tone-muted-bg: oklch(0.28 0.007 264);
 
-    --chart-1: oklch(0.68 0.16 274);
-    --chart-2: oklch(0.72 0.13 200);
-    --chart-3: oklch(0.76 0.14 155);
-    --chart-4: oklch(0.8 0.13 92);
-    --chart-5: oklch(0.74 0.15 40);
-    --chart-6: oklch(0.7 0.18 350);
-    --chart-7: oklch(0.68 0.16 320);
-    --chart-8: oklch(0.74 0.1 230);
+    --chart-1: #3987e5;
+    --chart-2: #d95926;
+    --chart-3: #199e70;
+    --chart-4: #c98500;
+    --chart-5: #d55181;
+    --chart-6: #008300;
+    --chart-7: #9085e9;
+    --chart-8: #e66767;
     --chart-grid: oklch(0.32 0.008 264);
-    --chart-axis: oklch(0.6 0.009 264);
+    --chart-axis: oklch(0.62 0.009 264);
 
     --shadow-sm: 0 1px 2px oklch(0 0 0 / 0.3);
     --shadow-md: 0 4px 12px oklch(0 0 0 / 0.36), 0 2px 4px oklch(0 0 0 / 0.28);
@@ -158,16 +159,16 @@
   --tone-violet-bg: oklch(0.33 0.07 300);
   --tone-muted-fg: oklch(0.62 0.008 264);
   --tone-muted-bg: oklch(0.28 0.007 264);
-  --chart-1: oklch(0.68 0.16 274);
-  --chart-2: oklch(0.72 0.13 200);
-  --chart-3: oklch(0.76 0.14 155);
-  --chart-4: oklch(0.8 0.13 92);
-  --chart-5: oklch(0.74 0.15 40);
-  --chart-6: oklch(0.7 0.18 350);
-  --chart-7: oklch(0.68 0.16 320);
-  --chart-8: oklch(0.74 0.1 230);
+  --chart-1: #3987e5;
+  --chart-2: #d95926;
+  --chart-3: #199e70;
+  --chart-4: #c98500;
+  --chart-5: #d55181;
+  --chart-6: #008300;
+  --chart-7: #9085e9;
+  --chart-8: #e66767;
   --chart-grid: oklch(0.32 0.008 264);
-  --chart-axis: oklch(0.6 0.009 264);
+  --chart-axis: oklch(0.62 0.009 264);
 }
 
 @theme inline {
