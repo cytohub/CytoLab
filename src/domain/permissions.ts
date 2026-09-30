@@ -137,6 +137,15 @@ export function canDeleteExperiment(actor: Actor, experiment: ExperimentPolicyTa
   );
 }
 
+/**
+ * Uploaders delete their own files; lab managers and admins delete any. Holding
+ * `attachment:delete` alone is not enough, since every contributor role has it.
+ */
+export function canDeleteAttachment(actor: Actor, uploadedBy: string | null): boolean {
+  if (!roleHasPermission(actor.role, 'attachment:delete')) return false;
+  return ORG_WIDE_EDITORS.has(actor.role) || uploadedBy === actor.userId;
+}
+
 export function canModifyAuthoredContent(actor: Actor, authorId: string | null, moderatePermission: Permission): boolean {
   return authorId === actor.userId || roleHasPermission(actor.role, moderatePermission);
 }

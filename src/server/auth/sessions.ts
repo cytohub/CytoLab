@@ -44,11 +44,14 @@ export async function createSession(userId: string, orgId: string, meta: Request
   return { token, expiresAt };
 }
 
-export async function revokeSession(token: string): Promise<void> {
-  await db()
+/** Revokes a live session; returns who it belonged to, or null if it was already gone. */
+export async function revokeSession(token: string): Promise<{ id: string; userId: string; orgId: string } | null> {
+  const [row] = await db()
     .update(sessions)
     .set({ revokedAt: new Date() })
-    .where(and(eq(sessions.tokenHash, hashToken(token)), isNull(sessions.revokedAt)));
+    .where(and(eq(sessions.tokenHash, hashToken(token)), isNull(sessions.revokedAt)))
+    .returning({ id: sessions.id, userId: sessions.userId, orgId: sessions.orgId });
+  return row ?? null;
 }
 
 /** Resolves a raw session token into an AuthContext, or null if invalid/expired/revoked. */

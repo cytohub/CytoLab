@@ -10,12 +10,13 @@ import { canTransitionExperiment, experimentTransitionEffects } from '@/domain/w
 import { actorOf, type AuthContext } from '../../auth/context';
 import { authorize } from '../../authz';
 import { db, type Transaction } from '../../db/client';
-import { entityTags, experiments, experimentTypes, projects, tags, users } from '../../db/schema';
+import { entityTags, experiments, experimentTypes, projects, tags } from '../../db/schema';
 import { registerEntity, setEntityDeleted, syncEntityLabel } from '../../platform/entities';
 import { recordEvent, type NotificationSpec } from '../../platform/events';
 import { formatExperimentId } from '@/domain/identifiers';
 import { nextSequenceValue } from '../../platform/sequences';
 import { indexExperiments } from '../search/indexers';
+import { isOrgMember, isOrgTeam } from '../shared/references';
 import { getExperimentDetail, type ExperimentDetail } from './detail';
 
 interface EditableExperiment {
@@ -73,8 +74,11 @@ export async function touchExperiment(tx: Transaction, ctx: AuthContext, experim
 
 async function validateReferences(
   ctx: AuthContext,
-  refs: { projectId?: string; experimentTypeId?: string; researcherId?: string },
+  refs: { projectId?: string; experimentTypeId?: string; researcherId?: string; teamId?: string | null },
 ): Promise<{ teamId: string | null } | void> {
+  if (refs.teamId && !(await isOrgTeam(ctx, refs.teamId))) {
+    throw new ValidationError('Team is invalid', { teamId: ['Unknown team'] });
+  }
   if (refs.projectId) {
     const [project] = await db().select({ id: projects.id, teamId: projects.teamId }).from(projects).where(and(eq(projects.id, refs.projectId), eq(projects.orgId, ctx.orgId), isNull(projects.deletedAt))).limit(1);
     if (!project) throw new ValidationError('Project is invalid', { projectId: ['Unknown project'] });
@@ -92,8 +96,7 @@ async function validateType(ctx: AuthContext, typeId: string) {
 }
 
 async function validateResearcher(ctx: AuthContext, userId: string) {
-  const [member] = await db().select({ id: users.id }).from(users).where(eq(users.id, userId)).limit(1);
-  if (!member) throw new ValidationError('Researcher is invalid', { researcherId: ['Unknown user'] });
+  if (!(await isOrgMember(ctx, userId))) throw new ValidationError('Researcher is invalid', { researcherId: ['Unknown user'] });
 }
 
 export async function createExperiment(ctx: AuthContext, input: CreateExperimentData): Promise<ExperimentDetail> {
