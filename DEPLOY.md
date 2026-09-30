@@ -39,12 +39,12 @@ Railway builds from a GitHub repository (recommended, because every push then
 redeploys) or from a folder you upload with its CLI.
 
 **GitHub.** Push this branch to the repository you want Railway to watch, for
-example `cytohub/CytoLab`. If you only have the `cytolab.bundle` file:
+example `cytohub/cytolab`. If you only have the `cytolab.bundle` file:
 
 ```sh
 git clone cytolab.bundle cytolab
 cd cytolab
-git remote set-url origin https://github.com/cytohub/CytoLab.git
+git remote set-url origin https://github.com/cytohub/cytolab.git
 git push -u origin HEAD:main
 ```
 
