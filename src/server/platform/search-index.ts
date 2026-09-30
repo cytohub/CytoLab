@@ -63,14 +63,24 @@ export interface SearchHit {
   score: number;
 }
 
-/** Builds a prefix tsquery ("car t cell" → "car:* & t:* & cell:*") from free text. */
+/**
+ * Builds a prefix tsquery from free text ("car t cell" → "car:* & t:* & cell:*").
+ * Only the last fragment of each word is a prefix: in "CAR-T" the hyphen shows
+ * "car" is already complete, so it must not match "cardiac", while "t" may still
+ * be mid-word ("CAR-T" → "car & t:*"). Space-separated words each stay prefixes,
+ * so "lenti trans" still finds "lentiviral transduction". Fragments are letters
+ * and digits only, so no tsquery operator can reach the query.
+ */
 export function toPrefixQuery(q: string): string | null {
   const terms = q
     .toLowerCase()
-    .split(/[^\p{L}\p{N}]+/u)
-    .filter(Boolean)
+    .split(/\s+/)
+    .flatMap((word) => {
+      const fragments = word.split(/[^\p{L}\p{N}]+/u).filter(Boolean);
+      return fragments.map((fragment, i) => (i === fragments.length - 1 ? `${fragment}:*` : fragment));
+    })
     .slice(0, 8);
-  return terms.length ? terms.map((t) => `${t}:*`).join(' & ') : null;
+  return terms.length ? terms.join(' & ') : null;
 }
 
 function escapeLike(value: string): string {

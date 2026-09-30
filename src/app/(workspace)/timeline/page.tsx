@@ -15,6 +15,7 @@ export const metadata: Metadata = { title: 'Timeline' };
 export const dynamic = 'force-dynamic';
 
 const KIND_LABEL: Record<TimelineEvent['kind'], string> = {
+  experiment_scheduled: 'Planned start',
   experiment_started: 'Started',
   experiment_completed: 'Completed',
   experiment_failed: 'Failed',
@@ -56,7 +57,7 @@ export default async function TimelinePage() {
                     <li key={event.id}>
                       <Link href={event.href} className="group flex items-center gap-3 px-4 py-2.5 transition-colors hover:bg-surface-hover">
                         <span className={cn('size-2 shrink-0 rounded-full', `dot-${event.tone}`)} aria-hidden />
-                        <span className="w-20 shrink-0 text-xs font-medium text-fg-subtle">{KIND_LABEL[event.kind]}</span>
+                        <span className="w-24 shrink-0 whitespace-nowrap text-xs font-medium text-fg-subtle">{KIND_LABEL[event.kind]}</span>
                         {event.displayId && <IdTag className="shrink-0">{event.displayId}</IdTag>}
                         <span className="min-w-0 flex-1 truncate text-sm text-fg group-hover:text-accent">{event.title}</span>
                         {event.project && <span className="hidden shrink-0 text-xs text-fg-faint sm:inline">{event.project.code}</span>}

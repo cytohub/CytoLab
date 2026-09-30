@@ -12,6 +12,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
+import { evenTicks } from '@/lib/chart-ticks';
 import { cn } from '@/lib/cn';
 
 /** Series colors reference the validated chart palette (theme-adaptive via CSS vars). */
@@ -78,7 +79,8 @@ export function TrendChart({
 }) {
   return (
     <ResponsiveContainer width="100%" height={height}>
-      <AreaChart data={data} margin={{ top: 6, right: 8, bottom: 0, left: -18 }}>
+      {/* Right margin leaves room for the latest period's centred label. */}
+      <AreaChart data={data} margin={{ top: 6, right: 22, bottom: 0, left: -18 }}>
         <defs>
           {series.map((s) => (
             <linearGradient key={s.key} id={`grad-${s.key}`} x1="0" y1="0" x2="0" y2="1">
@@ -93,7 +95,8 @@ export function TrendChart({
           tick={{ fill: 'var(--chart-axis)', fontSize: 11 }}
           axisLine={{ stroke: 'var(--chart-grid)' }}
           tickLine={false}
-          minTickGap={28}
+          ticks={evenTicks(data.map((d) => String(d[xKey])))}
+          interval={0}
         />
         <YAxis tick={{ fill: 'var(--chart-axis)', fontSize: 11 }} axisLine={false} tickLine={false} width={40} allowDecimals={false} />
         <Tooltip

@@ -256,7 +256,7 @@ export async function getAnalytics(ctx: AuthContext, query: AnalyticsQuery): Pro
 
 export interface TimelineEvent {
   id: string;
-  kind: 'experiment_started' | 'experiment_completed' | 'experiment_failed' | 'milestone' | 'project_started';
+  kind: 'experiment_scheduled' | 'experiment_started' | 'experiment_completed' | 'experiment_failed' | 'milestone' | 'project_started';
   date: DateOnly;
   title: string;
   displayId: string | null;
@@ -295,7 +295,9 @@ export async function getTimeline(ctx: AuthContext, query: TimelineQuery): Promi
   const events: TimelineEvent[] = [];
   for (const e of expRows) {
     if (e.startDate && e.startDate >= from && e.startDate <= to) {
-      events.push({ id: `${e.id}:start`, kind: 'experiment_started', date: e.startDate, title: e.name, displayId: e.displayId, href: routes.experiment(e.displayId), status: e.status, tone: 'blue', project: { code: e.code, name: e.projectName } });
+      // A planned run's start date is when it is scheduled to begin, not a start that happened.
+      const scheduled = e.status === 'planned';
+      events.push({ id: `${e.id}:start`, kind: scheduled ? 'experiment_scheduled' : 'experiment_started', date: e.startDate, title: e.name, displayId: e.displayId, href: routes.experiment(e.displayId), status: e.status, tone: scheduled ? 'neutral' : 'blue', project: { code: e.code, name: e.projectName } });
     }
     if (e.completedDate && e.completedDate >= from && e.completedDate <= to && (e.status === 'completed' || e.status === 'failed')) {
       events.push({

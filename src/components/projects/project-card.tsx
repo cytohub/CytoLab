@@ -39,9 +39,11 @@ export function ProjectCard({ project }: { project: ProjectListItem }) {
 
       <div className="mt-3 flex items-center justify-between gap-2 border-t border-border pt-3">
         <UserCell user={project.owner} size="xs" muted />
-        <div className="flex items-center gap-2">
+        <div className="flex min-w-0 items-center gap-2">
           {project.researchArea && <ColorLabel color={project.researchArea.color} className="hidden text-xs sm:inline-flex">{project.researchArea.name}</ColorLabel>}
-          <HealthBadge health={project.health} size="sm" />
+          <span className="shrink-0">
+            <HealthBadge health={project.health} size="sm" />
+          </span>
         </div>
       </div>
 

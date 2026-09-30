@@ -9,7 +9,7 @@ import type { TagSummary, UserSummary } from '@/server/modules/shared/presenters
 export function UserCell({ user, href, size = 'sm', muted }: { user: UserSummary | null; href?: string; size?: 'xs' | 'sm' | 'md'; muted?: boolean }) {
   if (!user) return <span className="text-sm text-fg-faint">Unassigned</span>;
   const inner = (
-    <span className={cn('inline-flex items-center gap-2', muted ? 'text-fg-muted' : 'text-fg')}>
+    <span className={cn('inline-flex min-w-0 max-w-full items-center gap-2', muted ? 'text-fg-muted' : 'text-fg')}>
       <Avatar name={user.name} initials={user.initials} color={user.avatarColor} avatarUrl={user.avatarUrl} size={size} />
       <span className="truncate text-sm font-medium">{user.name}</span>
     </span>
@@ -46,7 +46,7 @@ export function TagList({ tags, max, className }: { tags: TagSummary[]; max?: nu
 /** Small colored dot + label (research area, experiment type, team). */
 export function ColorLabel({ color, children, className }: { color: string; children: React.ReactNode; className?: string }) {
   return (
-    <span className={cn('inline-flex items-center gap-1.5 text-sm text-fg-muted', className)}>
+    <span className={cn('inline-flex min-w-0 items-center gap-1.5 text-sm text-fg-muted', className)}>
       <span className={cn('size-2 shrink-0 rounded-full', chipClass(color))} aria-hidden />
       <span className="truncate">{children}</span>
     </span>
@@ -55,7 +55,8 @@ export function ColorLabel({ color, children, className }: { color: string; chil
 
 /** Monospace identifier chip (EXP-1024, CART-001). */
 export function IdTag({ children, className }: { children: React.ReactNode; className?: string }) {
-  return <span className={cn('font-mono text-xs font-medium text-fg-subtle', className)}>{children}</span>;
+  // Identifiers never break across lines ("GENED-" / "BE").
+  return <span className={cn('whitespace-nowrap font-mono text-xs font-medium text-fg-subtle', className)}>{children}</span>;
 }
 
 export function KeyValue({ label, children, className }: { label: string; children: React.ReactNode; className?: string }) {

@@ -12,6 +12,7 @@ import { PRIORITY_META } from '@/domain/labels';
 import { api, ApiClientError, errorMessage } from '@/lib/api-client';
 import { routes } from '@/lib/routes';
 import { useFormOptions } from '@/lib/use-options';
+import { useSession } from '@/components/shell/session-context';
 import { toast } from '@/components/ui/toast';
 import type { ExperimentDetail } from '@/server/modules/experiments/detail';
 
@@ -34,6 +35,7 @@ export function CreateExperimentDialog({ trigger, defaultProjectId }: { trigger:
 
 function ExperimentForm({ defaultProjectId, onDone, router }: { defaultProjectId?: string; onDone: () => void; router: ReturnType<typeof useRouter> }) {
   const { options } = useFormOptions(true);
+  const session = useSession();
   const [projectId, setProjectId] = React.useState(defaultProjectId ?? '');
   const [projects, setProjects] = React.useState<Array<{ id: string; code: string; name: string }>>([]);
   const [experimentTypeId, setTypeId] = React.useState('');
@@ -61,7 +63,9 @@ function ExperimentForm({ defaultProjectId, onDone, router }: { defaultProjectId
   }, []);
 
   const type = experimentTypeId || options?.experimentTypes[0]?.id || '';
-  const researcher = researcherId || options?.members[0]?.id || '';
+  // Whoever designs the experiment is the most likely researcher.
+  const me = options?.members.find((m) => m.id === session.user.id);
+  const researcher = researcherId || me?.id || options?.members[0]?.id || '';
 
   const submit = async () => {
     setErrors({});

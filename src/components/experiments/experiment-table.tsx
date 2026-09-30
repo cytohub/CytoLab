@@ -25,6 +25,31 @@ const ALL_COLUMNS: Record<Column['key'], Column> = {
   tags: { key: 'tags', label: 'Tags' },
 };
 
+/**
+ * Columns appear as width allows, most important first, so the table never has
+ * to scroll sideways: experiment and status always; project and dates from sm;
+ * researcher, type and priority from xl; tags from 2xl. Short values never wrap,
+ * so codes like "GENED-BE" and dates stay on one line, and the experiment name
+ * absorbs the remaining width and truncates.
+ */
+function columnClass(key: Column['key']): string {
+  switch (key) {
+    case 'status':
+      return 'whitespace-nowrap';
+    case 'project':
+    case 'target':
+    case 'completed':
+    case 'updated':
+      return 'hidden whitespace-nowrap sm:table-cell';
+    case 'researcher':
+    case 'type':
+    case 'priority':
+      return 'hidden whitespace-nowrap xl:table-cell';
+    case 'tags':
+      return 'hidden 2xl:table-cell';
+  }
+}
+
 export function ExperimentTable({
   experiments,
   columns = ['project', 'type', 'researcher', 'status', 'target'],
@@ -40,9 +65,9 @@ export function ExperimentTable({
     <Table>
       <THead>
         <TR className="hover:bg-transparent">
-          <TH className="min-w-[220px]">Experiment</TH>
+          <TH className="min-w-[160px] sm:min-w-[220px]">Experiment</TH>
           {cols.map((col) => (
-            <TH key={col.key} className={col.key === 'tags' ? 'hidden xl:table-cell' : col.key === 'researcher' || col.key === 'type' ? 'hidden md:table-cell' : ''}>
+            <TH key={col.key} className={columnClass(col.key)}>
               {sortColumn && col.sortKey ? sortColumn(col) : col.label}
             </TH>
           ))}
@@ -51,18 +76,18 @@ export function ExperimentTable({
       <TBody>
         {experiments.map((exp) => (
           <TR key={exp.id} interactive className="align-middle">
-            <TD>
+            {/* w-full + max-w-0 lets this column take the leftover width and truncate. */}
+            <TD className="w-full min-w-[160px] max-w-0 sm:min-w-[220px]">
               <Link href={exp.href} className="group flex items-center gap-2">
                 <AttentionFlag attention={exp.attention} />
                 <IdTag className="shrink-0">{exp.displayId}</IdTag>
-                <span className="truncate font-medium text-fg group-hover:text-accent">{exp.name}</span>
+                <span className="truncate font-medium text-fg group-hover:text-accent" title={exp.name}>
+                  {exp.name}
+                </span>
               </Link>
             </TD>
             {cols.map((col) => (
-              <TD
-                key={col.key}
-                className={col.key === 'tags' ? 'hidden xl:table-cell' : col.key === 'researcher' || col.key === 'type' ? 'hidden md:table-cell' : ''}
-              >
+              <TD key={col.key} className={columnClass(col.key)}>
                 {renderCell(exp, col.key)}
               </TD>
             ))}

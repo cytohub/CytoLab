@@ -22,12 +22,19 @@ import {
 import { createRandom } from './random';
 
 const DAY_MS = 86_400_000;
-const START_OF_TODAY = Math.floor(Date.now() / DAY_MS) * DAY_MS;
+const SEEDED_AT = Date.now();
+const START_OF_TODAY = Math.floor(SEEDED_AT / DAY_MS) * DAY_MS;
 const rng = createRandom(20240517);
 
-/** A timestamp `dayOffset` days from today at a given hour (deterministic, for demo history). */
+/**
+ * A timestamp `dayOffset` days from today at a given hour (deterministic, for demo
+ * history). Seeded timestamps record things that already happened, so they never
+ * land after the moment the seed runs: "today at 4 pm" collapses to a few minutes
+ * ago when the seed runs in the morning.
+ */
 function instant(dayOffset: number, hour = 10, minute = 0): Date {
-  return new Date(START_OF_TODAY + dayOffset * DAY_MS + hour * 3_600_000 + minute * 60_000);
+  const at = START_OF_TODAY + dayOffset * DAY_MS + hour * 3_600_000 + minute * 60_000;
+  return new Date(Math.min(at, SEEDED_AT - 5 * 60_000));
 }
 function offsetToDate(dayOffset: number): string {
   return addDays(todayIn(ORG.timezone), dayOffset);
@@ -218,7 +225,9 @@ async function buildWorkspace(tx: Transaction) {
       const researcherKey = rng.pick(memberKeys.length ? memberKeys : [project.owner]);
       const researcherId = uid(researcherKey);
       const typeId = typeIdByName.get(blueprint.type)!;
-      const eCreatedAt = instant(gen.startOffset - rng.int(1, 4), rng.int(8, 12));
+      // Planned work is written up ahead of time, so a run scheduled for next month
+      // was still created in the past.
+      const eCreatedAt = instant(Math.min(gen.startOffset - rng.int(1, 4), -rng.int(1, 12)), rng.int(8, 12));
       const title = `${blueprint.title}${gen.runLabel}`;
 
       await tx.insert(s.entities).values({ id: experimentId, orgId, entityType: 'experiment', displayId, title, createdBy: researcherId, createdAt: eCreatedAt });
@@ -345,22 +354,25 @@ function generateExperiments(project: ProjectSeed): GeneratedExperiment[] {
     } else if (startOffset > today) {
       status = 'planned';
     } else {
-      status = rng.weighted([
-        ['completed', 9],
-        ['in_progress', 6],
-        ['failed', 2],
-        ['planned', 1],
-        ['cancelled', 1],
-      ]);
+      // Status follows the calendar: runs that started long ago have mostly
+      // finished, and open work is concentrated in the last few weeks. Only a
+      // minority of open runs is overdue or blocked, so "needs attention" has
+      // something to show without the whole portfolio looking late.
+      const age = today - startOffset;
+      const choices: Array<readonly [ExperimentStatus, number]> =
+        age > 35
+          ? [['completed', 12], ['failed', 3], ['cancelled', 1], ['in_progress', 1]]
+          : [['completed', 4], ['in_progress', 7], ['failed', 1], ['cancelled', 1]];
+      // A run whose planned start slipped by a few days reads as "not started".
+      if (age <= 10) choices.push(['planned', 1]);
+      status = rng.weighted(choices);
       if (status === 'completed' || status === 'failed') {
         completedOffset = Math.min(today, startOffset + rng.int(2, targetGap + 5));
       } else if (status === 'in_progress') {
-        // Some in-progress experiments are overdue (drives "needs attention") or blocked.
-        if (rng.chance(0.25)) targetOffset = rng.int(-12, -1);
-        if (rng.chance(0.18)) blocked = rng.pick(BLOCK_REASONS);
-      } else if (status === 'planned') {
-        // A planned experiment whose start already passed shows as "not started".
-        targetOffset = startOffset + targetGap;
+        // Longer assays run past their first target; most open runs are on schedule.
+        // An overdue target still falls after the run's own start date.
+        targetOffset = age >= 3 && rng.chance(0.3) ? rng.int(Math.max(startOffset + 1, -14), -1) : rng.int(2, 28);
+        if (rng.chance(0.15)) blocked = rng.pick(BLOCK_REASONS);
       }
     }
 
@@ -396,7 +408,9 @@ async function insertExperiment(tx: Transaction, e: ExperimentInsert): Promise<v
   const isDone = e.status === 'completed' || e.status === 'failed';
   const started = e.status !== 'planned';
   const statusChangedAt = isDone && e.completedOffset != null ? instant(e.completedOffset, 16) : started ? instant(e.startOffset, 11) : e.createdAt;
-  const lastActivityAt = isDone && e.completedOffset != null ? instant(e.completedOffset, 17) : e.status === 'in_progress' ? instant(Math.min(0, e.startOffset + rng.int(1, 20)), 14) : statusChangedAt;
+  // Most open runs saw activity this week; a few have genuinely gone quiet ("stale").
+  const inProgressActivityOffset = Math.max(e.startOffset, rng.chance(0.15) ? -rng.int(15, 30) : -rng.int(0, 8));
+  const lastActivityAt = isDone && e.completedOffset != null ? instant(e.completedOffset, 17) : e.status === 'in_progress' ? instant(inProgressActivityOffset, 14) : statusChangedAt;
 
   const conclusion = isDone ? e.blueprint.conclusion : null;
   const summary = e.status === 'completed' ? e.blueprint.summary : e.status === 'failed' ? 'Run did not meet acceptance criteria; see observations (synthetic demo data).' : null;

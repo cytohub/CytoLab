@@ -88,7 +88,7 @@ export default async function ProjectOverviewPage({ params }: { params: Promise<
               </div>
               <ProgressBar value={project.progressPercent} tone={project.health.tone as 'green' | 'amber' | 'red' | 'muted'} markerAt={project.health.expectedPercent} />
               {project.health.expectedPercent != null && (
-                <p className="mt-1.5 text-xs text-fg-subtle">Expected ~{project.health.expectedPercent}% by now (marker)</p>
+                <p className="mt-1.5 text-xs text-fg-subtle">Expected ~{project.health.expectedPercent}% by now, shown by the tick</p>
               )}
             </div>
             {project.health.reasons.length > 0 && (
