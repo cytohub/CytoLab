@@ -17,7 +17,7 @@ export function ComingSoon({ icon, title, description, capabilities, phase }: { 
           </div>
         </div>
         <p className="mt-4 text-sm leading-relaxed text-fg-muted">
-          This module is part of the BioEngine roadmap. The data model and API already reserve first-class objects for it, so it will connect to your existing projects and experiments when it ships.
+          This module is part of the CytoLab roadmap. The data model and API already reserve first-class objects for it, so it will connect to your existing projects and experiments when it ships.
         </p>
         <div className="mt-5">
           <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-fg-subtle">Planned capabilities</div>

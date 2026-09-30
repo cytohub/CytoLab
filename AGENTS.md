@@ -8,7 +8,7 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 <!-- END:nextjs-agent-rules -->
 
-# BioEngine
+# CytoLab
 
 Life-science R&D platform. V1 is an experiment & research progress dashboard;
 `docs/architecture.md` is the source of truth for structure and decisions.

@@ -1,8 +1,8 @@
 {
-  "name": "bioengine",
+  "name": "cytolab",
   "version": "0.1.0",
   "private": true,
-  "description": "BioEngine — life-science R&D platform (V1: experiment & research progress dashboard)",
+  "description": "CytoLab — life-science R&D platform (V1: experiment & research progress dashboard)",
   "packageManager": "pnpm@10.33.0",
   "engines": {
     "node": ">=20.9.0"

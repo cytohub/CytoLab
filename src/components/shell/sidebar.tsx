@@ -57,7 +57,7 @@ export function SidebarNav({ orgName, onNavigate }: { orgName: string; onNavigat
               <path d="M7.5 15h9M9 3h6" />
             </svg>
           </span>
-          <span className="text-[15px] font-semibold tracking-tight text-fg">BioEngine</span>
+          <span className="text-[15px] font-semibold tracking-tight text-fg">CytoLab</span>
         </Link>
       </div>
 

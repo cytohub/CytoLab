@@ -10,7 +10,7 @@ import type { InputType, Priority, ProjectStatus } from '../../src/domain/enums'
 import type { ColorToken } from '../../src/domain/schemas/common';
 
 export const ORG = { name: 'Acme Biosciences', slug: 'acme-bio', timezone: 'America/New_York' };
-export const DEMO_PASSWORD = 'bioengine-demo';
+export const DEMO_PASSWORD = 'cytolab-demo';
 
 export interface PersonSeed {
   key: string;

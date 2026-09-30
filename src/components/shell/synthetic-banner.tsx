@@ -3,7 +3,7 @@
 import { X } from 'lucide-react';
 import * as React from 'react';
 
-const STORAGE_KEY = 'bioengine.demo-banner.dismissed';
+const STORAGE_KEY = 'cytolab.demo-banner.dismissed';
 
 /** Persistent notice that all data is synthetic. Dismissal is per-browser only. */
 export function SyntheticDataBanner() {

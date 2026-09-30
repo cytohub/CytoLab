@@ -114,5 +114,5 @@ export async function listDemoAccounts(): Promise<{ enabled: boolean; password: 
     seen.add(row.role);
     accounts.push({ user: toUserSummary(row)!, role: row.role });
   }
-  return { enabled: true, password: 'bioengine-demo', accounts };
+  return { enabled: true, password: 'cytolab-demo', accounts };
 }

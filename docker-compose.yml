@@ -3,16 +3,16 @@ services:
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_USER: bioengine
-      POSTGRES_PASSWORD: bioengine
-      POSTGRES_DB: bioengine
+      POSTGRES_USER: cytolab
+      POSTGRES_PASSWORD: cytolab
+      POSTGRES_DB: cytolab
     ports:
       - '5432:5432'
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./scripts/docker/init-test-db.sql:/docker-entrypoint-initdb.d/10-init-test-db.sql:ro
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U bioengine -d bioengine']
+      test: ['CMD-SHELL', 'pg_isready -U cytolab -d cytolab']
       interval: 5s
       timeout: 3s
       retries: 10

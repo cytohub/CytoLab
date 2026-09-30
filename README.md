@@ -1,4 +1,4 @@
-# BioEngine
+# CytoLab
 
 A modern life-science R&D platform. **V1 is an Experiment & Research Progress
 Dashboard**, built on a foundation designed to grow into a full scientific R&D
@@ -55,7 +55,7 @@ pnpm dev                      # http://localhost:3000
 ```
 
 On the sign-in page, pick a demo account (or use any seeded email with the
-password `bioengine-demo`) to explore the different roles — Admin, Lab Manager,
+password `cytolab-demo`) to explore the different roles — Admin, Lab Manager,
 Scientist, Researcher, Viewer.
 
 ## Scripts
@@ -74,7 +74,7 @@ Scientist, Researcher, Viewer.
 | `pnpm jobs:attention` | Run the "needs attention" notification scan. |
 
 Integration tests use `DATABASE_URL_TEST` (default
-`…/bioengine_test`); the harness drops and rebuilds that schema before running.
+`…/cytolab_test`); the harness drops and rebuilds that schema before running.
 
 ## Project structure
 

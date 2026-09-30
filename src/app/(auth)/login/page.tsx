@@ -23,7 +23,7 @@ export default async function LoginPage() {
               <path d="M7.5 15h9M9 3h6" />
             </svg>
           </span>
-          <h1 className="text-xl font-semibold tracking-tight text-fg">Sign in to BioEngine</h1>
+          <h1 className="text-xl font-semibold tracking-tight text-fg">Sign in to CytoLab</h1>
           <p className="mt-1 text-sm text-fg-muted">Your life-science R&D workspace</p>
         </div>
 

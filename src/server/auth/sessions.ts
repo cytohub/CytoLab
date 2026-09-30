@@ -12,7 +12,7 @@ const TOUCH_INTERVAL_MS = 5 * 60 * 1000;
 
 /** `__Host-` binds the cookie to this exact origin over HTTPS (no Domain, Path=/). */
 export function sessionCookieName(): string {
-  return env().NODE_ENV === 'production' ? '__Host-be_session' : 'be_session';
+  return env().NODE_ENV === 'production' ? '__Host-cytolab_session' : 'cytolab_session';
 }
 
 export function sessionCookieOptions(expiresAt: Date) {

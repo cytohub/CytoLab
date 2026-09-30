@@ -28,11 +28,11 @@ if command -v pg_ctlcluster >/dev/null 2>&1 || command -v service >/dev/null 2>&
     if su postgres -c "pg_isready" >/dev/null 2>&1; then break; fi
     sleep 1
   done
-  su postgres -c "psql -tAc \"SELECT 1 FROM pg_roles WHERE rolname='bioengine'\"" 2>/dev/null | grep -q 1 \
-    || su postgres -c "psql -c \"CREATE ROLE bioengine LOGIN PASSWORD 'bioengine' CREATEDB\"" >/dev/null 2>&1 || true
-  for db in bioengine bioengine_test; do
+  su postgres -c "psql -tAc \"SELECT 1 FROM pg_roles WHERE rolname='cytolab'\"" 2>/dev/null | grep -q 1 \
+    || su postgres -c "psql -c \"CREATE ROLE cytolab LOGIN PASSWORD 'cytolab' CREATEDB\"" >/dev/null 2>&1 || true
+  for db in cytolab cytolab_test; do
     su postgres -c "psql -tAc \"SELECT 1 FROM pg_database WHERE datname='$db'\"" 2>/dev/null | grep -q 1 \
-      || su postgres -c "createdb -O bioengine $db" >/dev/null 2>&1 || true
+      || su postgres -c "createdb -O cytolab $db" >/dev/null 2>&1 || true
   done
 fi
 
@@ -42,4 +42,4 @@ if command -v pnpm >/dev/null 2>&1; then
   pnpm db:seed >/dev/null 2>&1 || true
 fi
 
-echo "BioEngine environment ready."
+echo "CytoLab environment ready."

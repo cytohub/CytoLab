@@ -1,6 +1,6 @@
-# BioEngine — Architecture
+# CytoLab — Architecture
 
-BioEngine is a life-science R&D platform. V1 is an **Experiment & Research Progress
+CytoLab is a life-science R&D platform. V1 is an **Experiment & Research Progress
 Dashboard**; the architecture is designed so the same codebase can grow into experiment
 management, sample/data management, an ELN, and eventually a full R&D operating system
 without a rewrite.

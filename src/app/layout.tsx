@@ -8,7 +8,7 @@ import { ThemeProvider } from '@/components/shell/theme';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: { default: 'BioEngine', template: '%s · BioEngine' },
+  title: { default: 'CytoLab', template: '%s · CytoLab' },
   description: 'Life-science R&D platform — track experiments, projects and research progress.',
   robots: { index: false, follow: false },
 };
