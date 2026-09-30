@@ -10,4 +10,4 @@ export const GET = api(async ({ ctx }) => ok(await listMembers(ctx)));
 export const POST = api(async ({ ctx, req }) => {
   const input = await parseJson(req, createMemberSchema);
   return created(await createMember(ctx, input));
-});
+}, { publicDemoLock: 'people' });

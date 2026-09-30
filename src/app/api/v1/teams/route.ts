@@ -10,4 +10,4 @@ export const GET = api(async ({ ctx }) => ok(await listTeams(ctx)));
 export const POST = api(async ({ ctx, req }) => {
   const input = await parseJson(req, createTeamSchema);
   return created(await createTeam(ctx, input));
-});
+}, { publicDemoLock: 'people' });

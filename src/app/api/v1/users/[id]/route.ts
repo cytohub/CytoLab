@@ -10,4 +10,4 @@ export const GET = api<{ id: string }>(async ({ ctx, params }) => ok(await getMe
 export const PATCH = api<{ id: string }>(async ({ ctx, req, params }) => {
   const input = await parseJson(req, updateMemberSchema);
   return ok(await updateMember(ctx, params.id, input));
-});
+}, { publicDemoLock: 'people' });

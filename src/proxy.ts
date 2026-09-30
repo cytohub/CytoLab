@@ -45,6 +45,27 @@ function generateNonce(): string {
   return btoa(binary);
 }
 
+/**
+ * `www.` + the APP_URL host is served only so that people who type it arrive;
+ * send them to the canonical origin so the app has one address and one cookie
+ * jar. The target is always built from APP_URL (never from request headers),
+ * and the path is assigned rather than resolved, so `//other.site` stays a path
+ * on the canonical host instead of becoming an open redirect.
+ */
+function canonicalRedirect(request: NextRequest): NextResponse | null {
+  const appUrl = process.env.APP_URL;
+  if (!appUrl || !URL.canParse(appUrl)) return null;
+  const canonical = new URL(appUrl);
+  const forwardedHost = request.headers.get('x-forwarded-host')?.split(',')[0]!.trim();
+  const host = (forwardedHost || request.headers.get('host'))?.toLowerCase();
+  if (host !== `www.${canonical.host}`) return null;
+
+  const target = new URL(canonical.origin);
+  target.pathname = request.nextUrl.pathname;
+  target.search = request.nextUrl.search;
+  return NextResponse.redirect(target, 308);
+}
+
 export function proxy(request: NextRequest): NextResponse {
   // The other security headers (X-Frame-Options, nosniff, …) are set for every
   // route in next.config.ts. Only the nonce-based CSP needs per-request logic,
@@ -52,6 +73,9 @@ export function proxy(request: NextRequest): NextResponse {
   if (process.env.NODE_ENV !== 'production') {
     return NextResponse.next();
   }
+
+  const redirect = canonicalRedirect(request);
+  if (redirect) return redirect;
 
   const nonce = generateNonce();
   const csp = buildContentSecurityPolicy(nonce);

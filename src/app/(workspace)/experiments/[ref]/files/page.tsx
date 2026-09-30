@@ -1,6 +1,7 @@
 import { requireServerAuth } from '@/server/auth/request';
 import { getExperimentByRef } from '@/server/modules/experiments/detail';
 import { listAttachments } from '@/server/modules/collaboration/attachments';
+import { publicDemoLockReason } from '@/server/http/public-demo';
 import { FileManager } from '@/components/experiments/managers';
 
 export const dynamic = 'force-dynamic';
@@ -10,5 +11,12 @@ export default async function FilesPage({ params }: { params: Promise<{ ref: str
   const { ref } = await params;
   const exp = await getExperimentByRef(ctx, ref);
   const attachments = await listAttachments(ctx, exp.id);
-  return <FileManager entityId={exp.id} attachments={attachments} canEdit={exp.permissions.canEdit} />;
+  return (
+    <FileManager
+      entityId={exp.id}
+      attachments={attachments}
+      canEdit={exp.permissions.canEdit}
+      lockedReason={publicDemoLockReason('files')}
+    />
+  );
 }

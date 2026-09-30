@@ -11,6 +11,7 @@ export class RateLimiter {
   constructor(
     private readonly limit: number,
     private readonly windowMs: number,
+    private readonly message?: string,
   ) {}
 
   consume(key: string, now = Date.now()): void {
@@ -21,7 +22,7 @@ export class RateLimiter {
       return;
     }
     entry.count += 1;
-    if (entry.count > this.limit) throw new RateLimitError(Math.ceil((entry.resetAt - now) / 1000));
+    if (entry.count > this.limit) throw new RateLimitError(Math.ceil((entry.resetAt - now) / 1000), this.message);
   }
 
   reset(key: string): void {

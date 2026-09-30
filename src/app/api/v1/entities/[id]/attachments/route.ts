@@ -28,4 +28,4 @@ export const POST = api<{ id: string }>(async ({ ctx, req, params }) => {
     description: typeof description === 'string' ? description : null,
   });
   return created(result);
-});
+}, { publicDemoLock: 'files' });

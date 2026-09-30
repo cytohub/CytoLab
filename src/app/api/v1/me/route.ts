@@ -16,4 +16,4 @@ export const PATCH = api(async ({ ctx, req }) => {
   const input = await parseJson(req, updateProfileSchema);
   await updateProfile(ctx, input);
   return ok({ success: true });
-});
+}, { publicDemoLock: 'people' });

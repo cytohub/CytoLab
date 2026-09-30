@@ -8,4 +8,4 @@ export const dynamic = 'force-dynamic';
 export const POST = api<{ id: string }>(async ({ ctx, req, params }) => {
   const input = await parseJson(req, addTeamMemberSchema);
   return created(await addTeamMember(ctx, params.id, input));
-});
+}, { publicDemoLock: 'people' });

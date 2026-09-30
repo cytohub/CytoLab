@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 import { getServerAuth } from '@/server/auth/request';
+import { env } from '@/server/env';
 import { listDemoAccounts } from '@/server/modules/auth/service';
 import { routes } from '@/lib/routes';
 import { LoginForm } from './login-form';
@@ -30,7 +31,9 @@ export default async function LoginPage() {
         <LoginForm demo={demo} />
 
         <p className="mt-6 text-center text-xs text-fg-faint">
-          Demo workspace with synthetic data. Not for real scientific records.
+          {env().PUBLIC_DEMO
+            ? 'Public demo with synthetic data. Changes reset every night. Not for real scientific records.'
+            : 'Demo workspace with synthetic data. Not for real scientific records.'}
         </p>
       </div>
     </div>

@@ -11,6 +11,16 @@ const envSchema = z.object({
   DATABASE_URL: z.url({ error: 'DATABASE_URL must be a postgres:// connection URL' }),
   APP_URL: z.url().default('http://localhost:3000'),
   DEMO_MODE: boolFlag,
+  // Anyone may sign in: lock uploads and accounts, limit writes, allow nightly resets.
+  PUBLIC_DEMO: boolFlag,
+  // The one header the reverse proxy overwrites with the client's address
+  // (Railway: x-real-ip, Cloudflare: cf-connecting-ip). Unset trusts X-Forwarded-For.
+  CLIENT_IP_HEADER: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .regex(/^[a-z0-9-]+$/, { error: 'CLIENT_IP_HEADER must be a header name such as x-real-ip' })
+    .optional(),
   STORAGE_DIR: z.string().min(1).default('.data/uploads'),
   MAX_UPLOAD_BYTES: z.coerce.number().int().positive().default(25 * 1024 * 1024),
   INTERNAL_JOB_SECRET: z.string().min(16).optional(),

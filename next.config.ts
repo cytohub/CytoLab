@@ -12,6 +12,9 @@ const securityHeaders = [
   { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
   { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=()' },
   { key: 'Cross-Origin-Opener-Policy', value: 'same-origin' },
+  // Browsers honor HSTS only over HTTPS, so plain-HTTP local runs are unaffected.
+  // No includeSubDomains: other hosts under the domain may not serve TLS.
+  ...(process.env.NODE_ENV === 'production' ? [{ key: 'Strict-Transport-Security', value: 'max-age=31536000' }] : []),
 ];
 
 const nextConfig: NextConfig = {

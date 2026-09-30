@@ -6,7 +6,7 @@ import * as React from 'react';
 const STORAGE_KEY = 'cytolab.demo-banner.dismissed';
 
 /** Persistent notice that all data is synthetic. Dismissal is per-browser only. */
-export function SyntheticDataBanner() {
+export function SyntheticDataBanner({ resetsNightly = false }: { resetsNightly?: boolean }) {
   const [dismissed, setDismissed] = React.useState(true);
 
   // Read the per-browser dismissal from localStorage after mount (unavailable
@@ -27,6 +27,7 @@ export function SyntheticDataBanner() {
     <div className="flex items-center justify-center gap-2 border-b border-[color:var(--tone-amber-fg)]/20 bg-[var(--tone-amber-bg)] px-4 py-1.5 text-center text-xs text-[color:var(--tone-amber-fg)]">
       <span>
         <strong className="font-semibold">Demo workspace.</strong> All projects, experiments, people and results are synthetic — not real scientific data.
+        {resetsNightly && ' Changes reset every night.'}
       </span>
       <button
         onClick={() => {

@@ -69,8 +69,8 @@ export class ConflictError extends AppError {
 }
 
 export class RateLimitError extends AppError {
-  constructor(retryAfterSeconds: number) {
-    super('rate_limited', 'Too many attempts. Try again shortly.', 429, { retryAfterSeconds });
+  constructor(retryAfterSeconds: number, message = 'Too many attempts. Try again shortly.') {
+    super('rate_limited', message, 429, { retryAfterSeconds });
   }
 }
 

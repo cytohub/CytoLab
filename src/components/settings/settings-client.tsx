@@ -17,9 +17,11 @@ import { useSession } from '@/components/shell/session-context';
 import type { ExperimentTypeView } from '@/server/modules/config/service';
 import type { TagSummary } from '@/server/modules/shared/presenters';
 
-export function ProfileSettings() {
+/** `lockedReason` is set when profiles are read-only for this deployment. */
+export function ProfileSettings({ lockedReason = null }: { lockedReason?: string | null }) {
   const router = useRouter();
   const { user } = useSession();
+  const locked = lockedReason !== null;
   const [name, setName] = React.useState(user.name);
   const [title, setTitle] = React.useState(user.title ?? '');
   const [color, setColor] = React.useState(user.avatarColor);
@@ -47,17 +49,18 @@ export function ProfileSettings() {
           <Avatar name={name} color={color} size="xl" />
           <div className="flex flex-wrap gap-1.5">
             {COLOR_TOKENS.map((c) => (
-              <button key={c} onClick={() => setColor(c)} className={cn(`size-6 rounded-full avatar-${c} ring-2 ring-offset-2 ring-offset-surface`, color === c ? 'ring-accent' : 'ring-transparent')} aria-label={c} />
+              <button key={c} onClick={() => setColor(c)} disabled={locked} className={cn(`size-6 rounded-full avatar-${c} ring-2 ring-offset-2 ring-offset-surface disabled:cursor-not-allowed`, color === c ? 'ring-accent' : 'ring-transparent')} aria-label={c} />
             ))}
           </div>
         </div>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <Field label="Name" htmlFor="s-name"><Input id="s-name" value={name} onChange={(e) => setName(e.target.value)} /></Field>
-          <Field label="Title" htmlFor="s-title"><Input id="s-title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Senior Scientist" /></Field>
+          <Field label="Name" htmlFor="s-name"><Input id="s-name" value={name} onChange={(e) => setName(e.target.value)} disabled={locked} /></Field>
+          <Field label="Title" htmlFor="s-title"><Input id="s-title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Senior Scientist" disabled={locked} /></Field>
         </div>
         <Field label="Email"><Input value={user.email} disabled /></Field>
-        <div className="flex justify-end">
-          <Button onClick={save} loading={pending} disabled={!dirty}>Save changes</Button>
+        <div className="flex items-center justify-end gap-3">
+          {locked && <p className="text-xs text-fg-subtle">{lockedReason}</p>}
+          <Button onClick={save} loading={pending} disabled={!dirty || locked}>Save changes</Button>
         </div>
       </CardContent>
     </Card>

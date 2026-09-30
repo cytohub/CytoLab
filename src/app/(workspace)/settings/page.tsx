@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { requireServerAuth } from '@/server/auth/request';
 import { can } from '@/server/authz';
+import { publicDemoLockReason } from '@/server/http/public-demo';
 import { listExperimentTypes } from '@/server/modules/config/service';
 import { listTags } from '@/server/modules/collaboration/service';
 import { PageContainer, PageHeader } from '@/components/ui/page';
@@ -20,7 +21,7 @@ export default async function SettingsPage() {
     <PageContainer className="max-w-3xl">
       <PageHeader title="Settings" description="Manage your profile and workspace configuration." />
       <div className="space-y-5">
-        <ProfileSettings />
+        <ProfileSettings lockedReason={publicDemoLockReason('people')} />
 
         <Card>
           <CardHeader><CardTitle>Organization</CardTitle></CardHeader>

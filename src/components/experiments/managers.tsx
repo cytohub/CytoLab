@@ -281,7 +281,18 @@ function AddResultDialog({ displayId }: { displayId: string }) {
 
 // --- Files -----------------------------------------------------------------
 
-export function FileManager({ entityId, attachments, canEdit }: { entityId: string; attachments: AttachmentView[]; canEdit: boolean }) {
+export function FileManager({
+  entityId,
+  attachments,
+  canEdit,
+  lockedReason = null,
+}: {
+  entityId: string;
+  attachments: AttachmentView[];
+  canEdit: boolean;
+  /** Set when uploads are turned off for this deployment; shown instead of the upload control. */
+  lockedReason?: string | null;
+}) {
   const refresh = useRefresh();
   const [uploading, setUploading] = React.useState(false);
   const [busy, setBusy] = React.useState<string | null>(null);
@@ -310,14 +321,15 @@ export function FileManager({ entityId, attachments, canEdit }: { entityId: stri
 
   return (
     <div className="space-y-4">
-      {canEdit && (
+      {canEdit && !lockedReason && (
         <div className="flex justify-end">
           <input ref={inputRef} type="file" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) void upload(f); }} />
           <Button size="sm" variant="secondary" loading={uploading} onClick={() => inputRef.current?.click()}><Upload /> Upload file</Button>
         </div>
       )}
+      {lockedReason && attachments.length > 0 && <p className="text-right text-xs text-fg-subtle">{lockedReason}</p>}
       {attachments.length === 0 ? (
-        <EmptyState icon={<Paperclip />} title="No files" description="Attach raw data, images, gating strategies and reports." />
+        <EmptyState icon={<Paperclip />} title="No files" description={lockedReason ?? 'Attach raw data, images, gating strategies and reports.'} />
       ) : (
         <Card>
           <ul className="divide-y divide-border">
@@ -331,7 +343,7 @@ export function FileManager({ entityId, attachments, canEdit }: { entityId: stri
                 <a href={a.downloadHref} className="rounded-md p-1.5 text-fg-subtle hover:bg-surface-hover hover:text-fg" aria-label="Download" download>
                   <Download className="size-4" />
                 </a>
-                {a.canDelete && (
+                {a.canDelete && !lockedReason && (
                   <button onClick={() => remove(a.id)} disabled={busy === a.id} className="rounded-md p-1.5 text-fg-subtle hover:bg-[var(--tone-red-bg)] hover:text-[var(--tone-red-fg)]" aria-label="Delete file">
                     <Trash2 className="size-4" />
                   </button>

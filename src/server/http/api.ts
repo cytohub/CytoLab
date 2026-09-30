@@ -13,11 +13,13 @@ import {
   type ApiErrorBody,
   type FieldErrors,
 } from '@/domain/errors';
+import type { PublicDemoLock } from '@/domain/public-demo';
 import type { AuthContext } from '../auth/context';
 import { authFromRequest } from '../auth/request';
 import { sessionCookieName } from '../auth/sessions';
 import { env } from '../env';
 import { logger, type Logger } from '../lib/logger';
+import { enforcePublicDemoWrite } from './public-demo';
 
 const MAX_JSON_BYTES = 1024 * 1024;
 const MUTATING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
@@ -68,10 +70,9 @@ export interface PublicArgs<P> extends BaseArgs<P> {
 export function assertSameOrigin(req: NextRequest): void {
   if (!MUTATING_METHODS.has(req.method)) return;
   const origin = req.headers.get('origin');
-  const allowed = new Set([req.nextUrl.origin, new URL(env().APP_URL).origin]);
 
   if (origin) {
-    if (!allowed.has(origin)) throw new ForbiddenError('Cross-origin request rejected');
+    if (!isSameOrigin(req, origin)) throw new ForbiddenError('Cross-origin request rejected');
     return;
   }
   if (req.headers.get('sec-fetch-site') === 'cross-site') throw new ForbiddenError('Cross-origin request rejected');
@@ -79,6 +80,28 @@ export function assertSameOrigin(req: NextRequest): void {
   // Cookie-authenticated mutation with no Origin header: reject (a real browser
   // would have sent one). This closes the header-stripping gap for session auth.
   if (req.cookies.get(sessionCookieName())) throw new ForbiddenError('Missing Origin on a session-authenticated request');
+}
+
+/**
+ * Whether the browser-set `Origin` names the site this request was addressed
+ * to. Behind a TLS-terminating proxy (Railway, Cloudflare, nginx) the server
+ * itself sees plain HTTP on an internal address, so hosts are compared with the
+ * forwarded host rather than whole origins with the server's own URL. A
+ * cross-site page cannot forge either side: browsers set `Origin` themselves,
+ * and adding `X-Forwarded-Host` to a cross-origin request would need a CORS
+ * preflight this app never approves.
+ */
+function isSameOrigin(req: NextRequest, origin: string): boolean {
+  if (origin === req.nextUrl.origin || origin === new URL(env().APP_URL).origin) return true;
+  let originHost: string;
+  try {
+    originHost = new URL(origin).host;
+  } catch {
+    return false; // e.g. the opaque origin "null"
+  }
+  const forwardedHost = req.headers.get('x-forwarded-host')?.split(',')[0]!.trim();
+  const host = forwardedHost || req.headers.get('host');
+  return host ? originHost === host.toLowerCase() : false;
 }
 
 export function zodFieldErrors(error: ZodError): FieldErrors {
@@ -191,9 +214,19 @@ function toResponse(result: unknown): Response {
 // Route wrappers
 // ---------------------------------------------------------------------------
 
+export interface RouteOptions {
+  /**
+   * Refuse this handler when the deployment is a public demo (PUBLIC_DEMO=true).
+   * Declared on the handler itself, so no alternate spelling of its URL can
+   * reach it unguarded.
+   */
+  publicDemoLock?: PublicDemoLock;
+}
+
 function wrap<P extends RouteParams, A>(
   requireAuth: boolean,
   handler: (args: A) => Promise<unknown>,
+  options: RouteOptions = {},
 ) {
   return async (req: NextRequest, routeContext: RouteContextLike<P>): Promise<Response> => {
     const requestId = req.headers.get('x-request-id')?.slice(0, 64) || crypto.randomUUID();
@@ -202,6 +235,9 @@ function wrap<P extends RouteParams, A>(
       assertSameOrigin(req);
       const ctx = await authFromRequest(req, requestId);
       if (requireAuth && !ctx) throw new UnauthorizedError();
+      if (requireAuth && (options.publicDemoLock || MUTATING_METHODS.has(req.method))) {
+        enforcePublicDemoWrite(req.headers, options.publicDemoLock);
+      }
       const params = (await routeContext.params) ?? ({} as P);
       const result = await handler({ req, params, ctx, requestId, log } as A);
       return finalize(toResponse(result), requestId);
@@ -220,8 +256,11 @@ function wrap<P extends RouteParams, A>(
 }
 
 /** Authenticated API route. */
-export function api<P extends RouteParams = RouteParams>(handler: (args: AuthedArgs<P>) => Promise<unknown>) {
-  return wrap<P, AuthedArgs<P>>(true, handler);
+export function api<P extends RouteParams = RouteParams>(
+  handler: (args: AuthedArgs<P>) => Promise<unknown>,
+  options?: RouteOptions,
+) {
+  return wrap<P, AuthedArgs<P>>(true, handler, options);
 }
 
 /** Route reachable without a session (sign-in, health). The context is provided when present. */

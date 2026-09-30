@@ -3,13 +3,21 @@ import { cookies, headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import type { NextRequest } from 'next/server';
 import { cache } from 'react';
+import { env } from '../env';
 import type { AuthContext } from './context';
 import { resolveSession, sessionCookieName, type RequestMeta } from './sessions';
 
-function clientIp(h: Headers): string | null {
-  const forwarded = h.get('x-forwarded-for');
-  if (forwarded) return forwarded.split(',')[0]!.trim() || null;
-  return h.get('x-real-ip');
+/**
+ * The client's address as reported by the reverse proxy. Behind a proxy that
+ * overwrites a known header, name it in CLIENT_IP_HEADER so a client cannot
+ * pick its own address (rate limits and audit entries key on it). Otherwise the
+ * first X-Forwarded-For hop is used, which is only as honest as the proxy.
+ */
+export function clientIp(h: Headers): string | null {
+  const trusted = env().CLIENT_IP_HEADER;
+  const raw = trusted ? h.get(trusted) : (h.get('x-forwarded-for') ?? h.get('x-real-ip'));
+  // An address is at most 45 characters; the cap bounds what reaches logs and limiter keys.
+  return raw?.split(',')[0]!.trim().slice(0, 64) || null;
 }
 
 export function requestMeta(h: Headers, requestId: string): RequestMeta {
