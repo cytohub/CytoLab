@@ -76,6 +76,13 @@ Scientist, Researcher, Viewer.
 Integration tests use `DATABASE_URL_TEST` (default
 `…/cytolab_test`); the harness drops and rebuilds that schema before running.
 
+## Deployment
+
+The `Dockerfile` builds one image that serves the app and runs the database
+scripts. [`DEPLOY.md`](DEPLOY.md) walks through hosting the public demo on
+Railway at `cytolab.ai`: uploads and account changes switched off, per-visitor
+write limits, and a nightly reset.
+
 ## Project structure
 
 ```

@@ -1,0 +1,26 @@
+# Secrets and local state
+.env
+.env.*
+!.env.example
+.data
+*.pem
+.claude
+
+# Dependencies and build output are produced inside the image
+node_modules
+.next
+out
+build
+next-env.d.ts
+*.tsbuildinfo
+
+# Test and tooling artifacts
+coverage
+playwright-report
+test-results
+blob-report
+npm-debug.log*
+pnpm-debug.log*
+.DS_Store
+.vercel
+.git
