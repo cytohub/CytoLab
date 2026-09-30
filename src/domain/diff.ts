@@ -30,6 +30,19 @@ export function diffFields(before: Record<string, unknown>, patch: Record<string
   return changes;
 }
 
+/**
+ * The values of a record that is being removed, as changes to null. Hard-deleted
+ * rows keep no trace, so their audit entry carries what was there.
+ */
+export function removedFields(record: Record<string, unknown>): FieldChanges {
+  const changes: FieldChanges = {};
+  for (const [key, value] of Object.entries(record)) {
+    if (value === null || value === undefined) continue;
+    changes[key] = { from: normalize(value), to: null };
+  }
+  return changes;
+}
+
 export function hasChanges(changes: FieldChanges): boolean {
   return Object.keys(changes).length > 0;
 }

@@ -1,7 +1,7 @@
 import 'server-only';
 import { and, desc, eq, isNull } from 'drizzle-orm';
 import { ForbiddenError, NotFoundError, PayloadTooLargeError, ValidationError } from '@/domain/errors';
-import { canModifyAuthoredContent } from '@/domain/permissions';
+import { canDeleteAttachment } from '@/domain/permissions';
 import { actorOf, type AuthContext } from '../../auth/context';
 import { authorize } from '../../authz';
 import { db } from '../../db/client';
@@ -72,7 +72,7 @@ export async function listAttachments(ctx: AuthContext, entityId: string): Promi
     uploadedBy: row.uploaderId ? { id: row.uploaderId, name: row.uploaderName!, title: row.uploaderTitle, email: row.uploaderEmail!, avatarColor: row.uploaderColor!, avatarUrl: row.uploaderAvatar, initials: initialsOf(row.uploaderName!) } : null,
     createdAt: row.createdAt.toISOString(),
     downloadHref: `/api/v1/attachments/${row.id}/download`,
-    canDelete: canModifyAuthoredContent(actorOf(ctx), row.uploaderId, 'attachment:delete'),
+    canDelete: canDeleteAttachment(actorOf(ctx), row.uploaderId),
   }));
 }
 
@@ -141,7 +141,7 @@ export async function deleteAttachment(ctx: AuthContext, attachmentId: string): 
     .where(and(eq(attachments.id, attachmentId), eq(attachments.orgId, ctx.orgId), isNull(attachments.deletedAt)))
     .limit(1);
   if (!row) throw new NotFoundError('Attachment');
-  if (!canModifyAuthoredContent(actorOf(ctx), row.uploadedBy, 'attachment:delete')) throw new ForbiddenError('You can only delete files you uploaded');
+  if (!canDeleteAttachment(actorOf(ctx), row.uploadedBy)) throw new ForbiddenError('You can only delete files you uploaded');
 
   await db().transaction(async (tx) => {
     await tx.update(attachments).set({ deletedAt: new Date() }).where(eq(attachments.id, attachmentId));

@@ -19,6 +19,7 @@ import { registerEntity, setEntityDeleted, syncEntityLabel } from '../../platfor
 import { recordEvent } from '../../platform/events';
 import { indexExperiments, indexProjects } from '../search/indexers';
 import { offset, pageMeta, type Paginated } from '../shared/pagination';
+import { isOrgMember } from '../shared/references';
 import { toUserSummary, type TeamSummary, type UserSummary } from '../shared/presenters';
 import { loadProjectMetrics, type ProjectMetrics } from './metrics';
 
@@ -267,9 +268,8 @@ export async function getProject(ctx: AuthContext, ref: string): Promise<Project
 // ---------------------------------------------------------------------------
 
 async function assertRefsExist(ctx: AuthContext, refs: { ownerId?: string; teamId?: string | null; researchAreaId?: string | null }) {
-  if (refs.ownerId) {
-    const [owner] = await db().select({ id: users.id }).from(users).where(eq(users.id, refs.ownerId)).limit(1);
-    if (!owner) throw new ValidationError('Owner is invalid', { ownerId: ['Unknown user'] });
+  if (refs.ownerId && !(await isOrgMember(ctx, refs.ownerId))) {
+    throw new ValidationError('Owner is invalid', { ownerId: ['Unknown user'] });
   }
   if (refs.teamId) {
     const [team] = await db().select({ id: teams.id }).from(teams).where(and(eq(teams.id, refs.teamId), eq(teams.orgId, ctx.orgId), isNull(teams.deletedAt))).limit(1);

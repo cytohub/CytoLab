@@ -1,6 +1,7 @@
 import 'server-only';
 import { and, asc, count, eq } from 'drizzle-orm';
 import type { z } from 'zod';
+import { diffFields, hasChanges } from '@/domain/diff';
 import { NotFoundError, ValidationError } from '@/domain/errors';
 import type { createExperimentTypeSchema, updateExperimentTypeSchema } from '@/domain/schemas/platform';
 import type { AuthContext } from '../../auth/context';
@@ -10,6 +11,7 @@ type UpdateExperimentTypeSchema = z.output<typeof updateExperimentTypeSchema>;
 import { authorize } from '../../authz';
 import { db } from '../../db/client';
 import { experiments, experimentTypes, researchAreas } from '../../db/schema';
+import { recordEvent } from '../../platform/events';
 
 export interface ExperimentTypeView {
   id: string;
@@ -42,21 +44,34 @@ export async function listExperimentTypes(ctx: AuthContext): Promise<ExperimentT
 
 export async function createExperimentType(ctx: AuthContext, input: CreateExperimentTypeSchema): Promise<ExperimentTypeView> {
   authorize(ctx, 'config:manage');
-  try {
-    await db().insert(experimentTypes).values({ orgId: ctx.orgId, name: input.name, category: input.category, description: input.description, color: input.color });
-  } catch (err) {
-    if (err && typeof err === 'object' && (err as { code?: string }).code === '23505') throw new ValidationError('That experiment type already exists', { name: ['Choose a different name'] });
-    throw err;
-  }
-  const types = await listExperimentTypes(ctx);
-  return types.find((t) => t.name.toLowerCase() === input.name.toLowerCase())!;
+  const typeId = await db()
+    .transaction(async (tx) => {
+      const [row] = await tx.insert(experimentTypes).values({ orgId: ctx.orgId, name: input.name, category: input.category, description: input.description, color: input.color }).returning({ id: experimentTypes.id });
+      await recordEvent(tx, ctx, { action: 'experiment_type.created', entityId: null, projectId: null, activity: false, audit: { action: 'create', resourceType: 'experiment_type', resourceId: row!.id, changes: null } });
+      return row!.id;
+    })
+    .catch((err) => {
+      if (err && typeof err === 'object' && (err as { code?: string }).code === '23505') throw new ValidationError('That experiment type already exists', { name: ['Choose a different name'] });
+      throw err;
+    });
+  return (await listExperimentTypes(ctx)).find((t) => t.id === typeId)!;
 }
 
 export async function updateExperimentType(ctx: AuthContext, typeId: string, input: UpdateExperimentTypeSchema): Promise<ExperimentTypeView> {
   authorize(ctx, 'config:manage');
-  const [type] = await db().select({ id: experimentTypes.id }).from(experimentTypes).where(and(eq(experimentTypes.id, typeId), eq(experimentTypes.orgId, ctx.orgId))).limit(1);
+  const [type] = await db()
+    .select({ name: experimentTypes.name, category: experimentTypes.category, description: experimentTypes.description, color: experimentTypes.color, isActive: experimentTypes.isActive })
+    .from(experimentTypes)
+    .where(and(eq(experimentTypes.id, typeId), eq(experimentTypes.orgId, ctx.orgId)))
+    .limit(1);
   if (!type) throw new NotFoundError('Experiment type');
-  await db().update(experimentTypes).set({ ...input, updatedAt: new Date() }).where(eq(experimentTypes.id, typeId));
+  const changes = diffFields(type, input);
+  await db().transaction(async (tx) => {
+    await tx.update(experimentTypes).set({ ...input, updatedAt: new Date() }).where(eq(experimentTypes.id, typeId));
+    if (hasChanges(changes)) {
+      await recordEvent(tx, ctx, { action: 'experiment_type.updated', entityId: null, projectId: null, activity: false, audit: { action: 'update', resourceType: 'experiment_type', resourceId: typeId, changes } });
+    }
+  });
   return (await listExperimentTypes(ctx)).find((t) => t.id === typeId)!;
 }
 

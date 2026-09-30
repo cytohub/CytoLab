@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  canDeleteAttachment,
   canDeleteProject,
   canEditExperiment,
   canEditProject,
@@ -67,5 +68,27 @@ describe('experiment policies', () => {
 
   it('lets lab managers and admins edit any experiment', () => {
     expect(canEditExperiment(actor({ role: 'lab_manager', userId: 'other' }), experiment)).toBe(true);
+  });
+});
+
+describe('attachment policies', () => {
+  it('lets uploaders delete their own files', () => {
+    expect(canDeleteAttachment(actor({ role: 'researcher', userId: 'u1' }), 'u1')).toBe(true);
+    expect(canDeleteAttachment(actor({ role: 'scientist', userId: 'u1' }), 'u1')).toBe(true);
+  });
+
+  it('stops contributors deleting files someone else uploaded', () => {
+    expect(canDeleteAttachment(actor({ role: 'researcher', userId: 'u1' }), 'u2')).toBe(false);
+    expect(canDeleteAttachment(actor({ role: 'scientist', userId: 'u1' }), 'u2')).toBe(false);
+    expect(canDeleteAttachment(actor({ role: 'researcher', userId: 'u1' }), null)).toBe(false);
+  });
+
+  it('lets lab managers and admins delete any file', () => {
+    expect(canDeleteAttachment(actor({ role: 'lab_manager', userId: 'u1' }), 'u2')).toBe(true);
+    expect(canDeleteAttachment(actor({ role: 'admin', userId: 'u1' }), null)).toBe(true);
+  });
+
+  it('never lets viewers delete, even their own past uploads', () => {
+    expect(canDeleteAttachment(actor({ role: 'viewer', userId: 'u1' }), 'u1')).toBe(false);
   });
 });

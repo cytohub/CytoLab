@@ -1,5 +1,6 @@
 import 'server-only';
 import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { diffFields, hasChanges, removedFields } from '@/domain/diff';
 import type { Role } from '@/domain/enums';
 import { NotFoundError, ValidationError } from '@/domain/errors';
 import { ROLE_META, TEAM_ROLE_LABELS } from '@/domain/labels';
@@ -106,8 +107,17 @@ export async function createMember(ctx: AuthContext, input: CreateMemberInput): 
 
 export async function updateMember(ctx: AuthContext, userId: string, input: UpdateMemberInput): Promise<MemberView> {
   authorize(ctx, 'member:manage');
-  const [membership] = await db().select({ id: orgMemberships.id, role: orgMemberships.role }).from(orgMemberships).where(and(eq(orgMemberships.orgId, ctx.orgId), eq(orgMemberships.userId, userId))).limit(1);
+  const [membership] = await db()
+    .select({ id: orgMemberships.id, role: orgMemberships.role, status: orgMemberships.status, name: users.name, title: users.title })
+    .from(orgMemberships)
+    .innerJoin(users, eq(users.id, orgMemberships.userId))
+    .where(and(eq(orgMemberships.orgId, ctx.orgId), eq(orgMemberships.userId, userId)))
+    .limit(1);
   if (!membership) throw new NotFoundError('Member');
+  const changes = diffFields(
+    { name: membership.name, title: membership.title, role: membership.role, status: membership.status },
+    { name: input.name, title: input.title, role: input.role, status: input.status },
+  );
 
   await db().transaction(async (tx) => {
     if (input.name !== undefined || input.title !== undefined) {
@@ -116,7 +126,9 @@ export async function updateMember(ctx: AuthContext, userId: string, input: Upda
     if (input.role !== undefined || input.status !== undefined) {
       await tx.update(orgMemberships).set({ ...(input.role ? { role: input.role } : {}), ...(input.status ? { status: input.status } : {}), updatedAt: new Date() }).where(eq(orgMemberships.id, membership.id));
     }
-    await recordEvent(tx, ctx, { action: 'member.updated', entityId: null, projectId: null, activity: false, audit: { action: 'update', resourceType: 'org_membership', resourceId: userId, changes: { role: { from: membership.role, to: input.role ?? membership.role } } } });
+    if (hasChanges(changes)) {
+      await recordEvent(tx, ctx, { action: 'member.updated', entityId: null, projectId: null, activity: false, audit: { action: 'update', resourceType: 'org_membership', resourceId: userId, changes } });
+    }
     await indexUsers(tx, ctx.orgId, [userId]);
   });
 
@@ -128,8 +140,13 @@ export async function updateProfile(ctx: AuthContext, input: UpdateProfileInput)
   if (input.name !== undefined) set.name = input.name;
   if (input.title !== undefined) set.title = input.title;
   if (input.avatarColor !== undefined) set.avatarColor = input.avatarColor;
+  const [before] = await db().select({ name: users.name, title: users.title, avatarColor: users.avatarColor }).from(users).where(eq(users.id, ctx.userId)).limit(1);
+  const changes = before ? diffFields(before, { name: input.name, title: input.title, avatarColor: input.avatarColor }) : {};
   await db().transaction(async (tx) => {
     await tx.update(users).set(set).where(eq(users.id, ctx.userId));
+    if (hasChanges(changes)) {
+      await recordEvent(tx, ctx, { action: 'profile.updated', entityId: null, projectId: null, activity: false, audit: { action: 'update', resourceType: 'user', resourceId: ctx.userId, changes } });
+    }
     if (input.name !== undefined) await indexUsers(tx, ctx.orgId, [ctx.userId]);
   });
 }
@@ -193,9 +210,15 @@ export async function createTeam(ctx: AuthContext, input: CreateTeamInput): Prom
 
 export async function updateTeam(ctx: AuthContext, teamId: string, input: UpdateTeamInput): Promise<TeamView> {
   authorize(ctx, 'team:manage');
-  const [team] = await db().select({ id: teams.id }).from(teams).where(and(eq(teams.id, teamId), eq(teams.orgId, ctx.orgId), isNull(teams.deletedAt))).limit(1);
+  const [team] = await db().select({ name: teams.name, description: teams.description, color: teams.color }).from(teams).where(and(eq(teams.id, teamId), eq(teams.orgId, ctx.orgId), isNull(teams.deletedAt))).limit(1);
   if (!team) throw new NotFoundError('Team');
-  await db().update(teams).set({ ...input, updatedAt: new Date() }).where(eq(teams.id, teamId));
+  const changes = diffFields(team, input);
+  await db().transaction(async (tx) => {
+    await tx.update(teams).set({ ...input, updatedAt: new Date() }).where(eq(teams.id, teamId));
+    if (hasChanges(changes)) {
+      await recordEvent(tx, ctx, { action: 'team.updated', entityId: null, projectId: null, activity: false, audit: { action: 'update', resourceType: 'team', resourceId: teamId, changes } });
+    }
+  });
   return getTeam(ctx, teamId);
 }
 
@@ -205,15 +228,30 @@ export async function addTeamMember(ctx: AuthContext, teamId: string, input: { u
   if (!team) throw new NotFoundError('Team');
   const [membership] = await db().select({ id: orgMemberships.id }).from(orgMemberships).where(and(eq(orgMemberships.orgId, ctx.orgId), eq(orgMemberships.userId, input.userId))).limit(1);
   if (!membership) throw new ValidationError('That person is not a member of this organization', { userId: ['Unknown member'] });
-  await db().insert(teamMemberships).values({ teamId, userId: input.userId, orgId: ctx.orgId, role: input.role }).onConflictDoUpdate({ target: [teamMemberships.teamId, teamMemberships.userId], set: { role: input.role } });
-  await db().transaction((tx) => indexUsers(tx, ctx.orgId, [input.userId]));
+  await db().transaction(async (tx) => {
+    const [existing] = await tx.select({ role: teamMemberships.role }).from(teamMemberships).where(and(eq(teamMemberships.teamId, teamId), eq(teamMemberships.userId, input.userId))).limit(1);
+    await tx.insert(teamMemberships).values({ teamId, userId: input.userId, orgId: ctx.orgId, role: input.role }).onConflictDoUpdate({ target: [teamMemberships.teamId, teamMemberships.userId], set: { role: input.role } });
+    const changes = diffFields({ userId: existing ? input.userId : null, role: existing?.role ?? null }, { userId: input.userId, role: input.role });
+    if (hasChanges(changes)) {
+      await recordEvent(tx, ctx, { action: 'team.member_added', entityId: null, projectId: null, activity: false, audit: { action: existing ? 'update' : 'link', resourceType: 'team_membership', resourceId: teamId, changes } });
+    }
+    await indexUsers(tx, ctx.orgId, [input.userId]);
+  });
   return getTeam(ctx, teamId);
 }
 
 export async function removeTeamMember(ctx: AuthContext, teamId: string, userId: string): Promise<void> {
   authorize(ctx, 'team:manage');
-  await db().delete(teamMemberships).where(and(eq(teamMemberships.teamId, teamId), eq(teamMemberships.userId, userId), eq(teamMemberships.orgId, ctx.orgId)));
-  await db().transaction((tx) => indexUsers(tx, ctx.orgId, [userId]));
+  await db().transaction(async (tx) => {
+    const [removed] = await tx
+      .delete(teamMemberships)
+      .where(and(eq(teamMemberships.teamId, teamId), eq(teamMemberships.userId, userId), eq(teamMemberships.orgId, ctx.orgId)))
+      .returning({ userId: teamMemberships.userId, role: teamMemberships.role });
+    if (removed) {
+      await recordEvent(tx, ctx, { action: 'team.member_removed', entityId: null, projectId: null, activity: false, audit: { action: 'unlink', resourceType: 'team_membership', resourceId: teamId, changes: removedFields(removed) } });
+    }
+    await indexUsers(tx, ctx.orgId, [userId]);
+  });
 }
 
 /** Directory options for pickers (assignees, owners, filters). */

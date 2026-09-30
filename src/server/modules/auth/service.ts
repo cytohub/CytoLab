@@ -77,8 +77,19 @@ export async function login(input: LoginInput, meta: RequestMeta): Promise<Login
   return { token: session.token, expiresAt: session.expiresAt, userId: account.userId, orgId: account.orgId };
 }
 
-export async function logout(token: string): Promise<void> {
-  await revokeSession(token);
+export async function logout(token: string, meta: RequestMeta): Promise<void> {
+  const session = await revokeSession(token);
+  if (!session) return;
+  await db().transaction((tx) =>
+    recordSystemAudit(tx, {
+      orgId: session.orgId,
+      actorId: session.userId,
+      action: 'logout',
+      resourceType: 'session',
+      resourceId: session.id,
+      metadata: { ip: meta.ip, userAgent: meta.userAgent },
+    }),
+  );
 }
 
 export interface DemoAccount {

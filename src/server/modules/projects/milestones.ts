@@ -1,7 +1,7 @@
 import 'server-only';
 import { and, eq, isNull, max } from 'drizzle-orm';
 import { diffFields } from '@/domain/diff';
-import { ForbiddenError, NotFoundError } from '@/domain/errors';
+import { ForbiddenError, NotFoundError, ValidationError } from '@/domain/errors';
 import { canManageMilestones } from '@/domain/permissions';
 import type { CreateMilestoneInput, UpdateMilestoneInput } from '@/domain/schemas/projects';
 import { actorOf, type AuthContext } from '../../auth/context';
@@ -9,6 +9,7 @@ import { authorize } from '../../authz';
 import { db } from '../../db/client';
 import { milestones, projects } from '../../db/schema';
 import { recordEvent } from '../../platform/events';
+import { isOrgMember } from '../shared/references';
 
 async function loadProjectForMilestone(ctx: AuthContext, projectId: string) {
   const [project] = await db()
@@ -18,6 +19,10 @@ async function loadProjectForMilestone(ctx: AuthContext, projectId: string) {
     .limit(1);
   if (!project) throw new NotFoundError('Project');
   return project;
+}
+
+async function assertOwnerInOrg(ctx: AuthContext, ownerId: string | null | undefined) {
+  if (ownerId && !(await isOrgMember(ctx, ownerId))) throw new ValidationError('Owner is invalid', { ownerId: ['Unknown user'] });
 }
 
 function assertCanManage(ctx: AuthContext, project: { ownerId: string; teamId: string | null }) {
@@ -30,6 +35,7 @@ function assertCanManage(ctx: AuthContext, project: { ownerId: string; teamId: s
 export async function createMilestone(ctx: AuthContext, projectId: string, input: CreateMilestoneInput) {
   const project = await loadProjectForMilestone(ctx, projectId);
   assertCanManage(ctx, project);
+  await assertOwnerInOrg(ctx, input.ownerId);
 
   return db().transaction(async (tx) => {
     const [seqRow] = await tx.select({ maxSeq: max(milestones.sequence) }).from(milestones).where(eq(milestones.projectId, projectId));
@@ -86,6 +92,7 @@ export async function updateMilestone(ctx: AuthContext, milestoneId: string, inp
   if (!current) throw new NotFoundError('Milestone');
   const project = await loadProjectForMilestone(ctx, current.projectId);
   assertCanManage(ctx, project);
+  await assertOwnerInOrg(ctx, input.ownerId);
 
   const changes = diffFields(
     { title: current.title, description: current.description, dueDate: current.dueDate, status: current.status, ownerId: current.ownerId, position: current.position },
