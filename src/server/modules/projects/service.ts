@@ -20,7 +20,7 @@ import { registerEntity, setEntityDeleted, syncEntityLabel } from '../../platfor
 import { recordEvent } from '../../platform/events';
 import { indexExperiments, indexProjects } from '../search/indexers';
 import { offset, pageMeta, type Paginated } from '../shared/pagination';
-import { isOrgMember } from '../shared/references';
+import { changed, isOrgMember } from '../shared/references';
 import { toUserSummary, type TeamSummary, type UserSummary } from '../shared/presenters';
 import { loadProjectMetrics, type ProjectMetrics } from './metrics';
 
@@ -340,7 +340,7 @@ export async function updateProject(ctx: AuthContext, ref: string, input: Update
   if (input.ownerId !== undefined && input.ownerId !== current.ownerId && !canReassignProject(actorOf(ctx), { ownerId: current.ownerId, teamId: current.teamId })) {
     throw new ForbiddenError('Only the project owner, a lab manager or an admin can change its owner');
   }
-  await assertRefsExist(ctx, input);
+  await assertRefsExist(ctx, { ownerId: changed(input.ownerId, current.ownerId), teamId: changed(input.teamId, current.teamId), researchAreaId: input.researchAreaId });
 
   const { expectedVersion: _v, ...patch } = input;
   if (patch.status && patch.status !== current.status && !canTransitionProject(current.status, patch.status)) {

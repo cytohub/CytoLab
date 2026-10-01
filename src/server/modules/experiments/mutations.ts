@@ -16,7 +16,7 @@ import { recordEvent, type NotificationSpec } from '../../platform/events';
 import { formatExperimentId } from '@/domain/identifiers';
 import { nextSequenceValue } from '../../platform/sequences';
 import { indexExperiments } from '../search/indexers';
-import { isOrgMember, isOrgTeam } from '../shared/references';
+import { changed, isOrgMember, isOrgTeam } from '../shared/references';
 import { getExperimentDetail, type ExperimentDetail } from './detail';
 
 interface EditableExperiment {
@@ -168,7 +168,12 @@ export async function updateExperiment(ctx: AuthContext, experimentId: string, i
   if (input.expectedVersion !== undefined && input.expectedVersion !== current.version) {
     throw new ConflictError('This experiment was changed by someone else. Reload and try again.', { currentVersion: current.version });
   }
-  const project = await validateReferences(ctx, input);
+  const project = await validateReferences(ctx, {
+    projectId: input.projectId,
+    experimentTypeId: input.experimentTypeId,
+    researcherId: changed(input.researcherId, current.researcherId),
+    teamId: changed(input.teamId, current.teamId),
+  });
 
   const { expectedVersion: _v, status: nextStatus, ...rest } = input;
   const statusChanging = nextStatus !== undefined && nextStatus !== current.status;

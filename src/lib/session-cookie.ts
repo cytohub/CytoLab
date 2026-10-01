@@ -12,6 +12,14 @@ export function sessionCookieName(production: boolean): string {
   return production ? '__Host-cytolab_session' : 'cytolab_session';
 }
 
+/**
+ * Options that remove the cookie. Browsers ignore a `__Host-` cookie without
+ * `Secure`, removals included, so this repeats every attribute of the original.
+ */
+export function clearedSessionCookieOptions(production: boolean) {
+  return { ...sessionCookieOptions(production, new Date(0)), maxAge: 0 };
+}
+
 export function sessionCookieOptions(production: boolean, expiresAt: Date) {
   return {
     httpOnly: true,

@@ -79,7 +79,10 @@ const FILE_PATH_RE = /\.[a-z0-9]+$/i;
  * fall back to `Accept: text/html`.
  */
 function isPageRequest(request: NextRequest): boolean {
-  if (FILE_PATH_RE.test(request.nextUrl.pathname)) return false;
+  const path = request.nextUrl.pathname;
+  // Next's own routes (/_global-error, /_not-found) can be prerendered with a
+  // public s-maxage; a cookie there could be cached and served to others.
+  if (path.startsWith('/_') || FILE_PATH_RE.test(path)) return false;
   const dest = request.headers.get('sec-fetch-dest');
   if (dest) return dest === 'document' || dest === 'empty';
   return (request.headers.get('accept') ?? '').includes('text/html');
