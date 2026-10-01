@@ -9,6 +9,16 @@ export type DateOnly = string;
 const DATE_ONLY_RE = /^\d{4}-\d{2}-\d{2}$/;
 const MS_PER_DAY = 86_400_000;
 
+/** Years a planning date or timestamp may fall in; Postgres rejects some values outside it. */
+export const MIN_YEAR = 1900;
+export const MAX_YEAR = 2200;
+
+/** Whether an instant falls within MIN_YEAR..MAX_YEAR (cursors and timestamps from clients). */
+export function isReasonableInstant(date: Date): boolean {
+  const year = date.getUTCFullYear();
+  return !Number.isNaN(date.getTime()) && year >= MIN_YEAR && year <= MAX_YEAR;
+}
+
 export function isDateOnly(value: string): value is DateOnly {
   if (!DATE_ONLY_RE.test(value)) return false;
   const parsed = new Date(`${value}T00:00:00Z`);

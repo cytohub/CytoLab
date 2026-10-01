@@ -1,4 +1,5 @@
 import 'server-only';
+import { isReasonableInstant } from '@/domain/dates';
 
 export interface PageMeta {
   page: number;
@@ -30,7 +31,7 @@ export function decodeCursor(cursor: string): { occurredAt: Date; id: string } |
     const [iso, id] = Buffer.from(cursor, 'base64url').toString('utf8').split('|');
     if (!iso || !id) return null;
     const occurredAt = new Date(iso);
-    return Number.isNaN(occurredAt.getTime()) ? null : { occurredAt, id };
+    return isReasonableInstant(occurredAt) ? { occurredAt, id } : null;
   } catch {
     return null;
   }

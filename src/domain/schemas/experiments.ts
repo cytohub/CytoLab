@@ -8,9 +8,11 @@ import {
   SAMPLE_STATUSES,
 } from '../enums';
 import {
+  boundedArray,
   csv,
   dateOnly,
   expectedVersion,
+  isoInstant,
   optionalText,
   pageParams,
   queryBoolean,
@@ -41,7 +43,7 @@ export const createExperimentSchema = z
     targetDate: nullableDate,
     protocolRef: optionalText(200),
     notes: optionalText(50_000),
-    tagIds: z.array(uuid).max(20).default([]),
+    tagIds: boundedArray(uuid, 20).default([]),
   })
   .refine(datesInOrder, datesError);
 export type CreateExperimentInput = z.input<typeof createExperimentSchema>;
@@ -133,14 +135,14 @@ export const stepSchema = z.object({
 });
 export const updateStepSchema = stepSchema.partial().extend({
   completed: z.boolean().optional(),
-  position: z.number().int().min(0).optional(),
+  position: z.number().int().min(0).max(100_000).optional(),
 });
 export type StepInput = z.input<typeof stepSchema>;
 
 export const observationSchema = z.object({
   body: requiredText(10_000, 'Observation'),
   significance: z.enum(OBSERVATION_SIGNIFICANCE).default('routine'),
-  observedAt: z.iso.datetime({ offset: true }).optional(),
+  observedAt: isoInstant.optional(),
 });
 export const updateObservationSchema = observationSchema.partial();
 export type ObservationInput = z.input<typeof observationSchema>;

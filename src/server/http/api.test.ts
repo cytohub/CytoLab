@@ -2,7 +2,9 @@ import { NextRequest } from 'next/server';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ForbiddenError } from '@/domain/errors';
 import { resetEnvCache } from '../env';
-import { assertSameOrigin, toAppError } from './api';
+import { z } from 'zod';
+import { PayloadTooLargeError } from '@/domain/errors';
+import { assertSameOrigin, parseJson, readBodyCapped, toAppError, zodFieldErrors } from './api';
 
 // The app behind a TLS-terminating proxy: the server sees an internal address
 // over plain HTTP, while the browser talks to https://cytolab.ai.
@@ -62,8 +64,14 @@ describe('toAppError', () => {
   // Drizzle wraps driver errors, so the Postgres code sits on `cause`.
   const pg = (code: string) => Object.assign(new Error('Failed query'), { cause: { code } });
 
-  it('turns a malformed UUID in the path into a 404, not a 500', () => {
+  it('turns a malformed UUID or a NUL byte in the path into a 404, not a 500', () => {
     expect(toAppError(pg('22P02'))?.status).toBe(404);
+    expect(toAppError(pg('22021'))?.status).toBe(404);
+  });
+
+  it('reports other data exceptions as invalid input', () => {
+    expect(toAppError(pg('22008'))?.status).toBe(422); // datetime out of range
+    expect(toAppError(pg('22003'))?.status).toBe(422); // numeric out of range
   });
 
   it('keeps mapping constraint violations', () => {
@@ -74,5 +82,49 @@ describe('toAppError', () => {
 
   it('leaves unknown errors for the 500 handler', () => {
     expect(toAppError(new Error('boom'))).toBeNull();
+  });
+});
+
+describe('readBodyCapped', () => {
+  /** A chunked body (no Content-Length) that records how much of it was pulled. */
+  function chunkedRequest(chunks: number, chunkBytes: number) {
+    let pulled = 0;
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        if (pulled >= chunks) return controller.close();
+        pulled += 1;
+        controller.enqueue(new Uint8Array(chunkBytes).fill(97));
+      },
+    });
+    const req = new Request('http://localhost/api/v1/auth/login', { method: 'POST', body, headers: { 'content-type': 'application/json' }, duplex: 'half' } as RequestInit);
+    return { req, pulled: () => pulled };
+  }
+
+  it('stops reading as soon as a chunked body passes the limit', async () => {
+    const { req, pulled } = chunkedRequest(1_000, 100);
+    await expect(readBodyCapped(req, 1_000)).rejects.toBeInstanceOf(PayloadTooLargeError);
+    expect(pulled()).toBeLessThan(20); // ~11 chunks, not all 1,000
+  });
+
+  it('returns bodies within the limit', async () => {
+    const { req } = chunkedRequest(5, 100);
+    expect((await readBodyCapped(req, 1_000)).byteLength).toBe(500);
+  });
+
+  it('refuses a declared Content-Length over the limit without reading', async () => {
+    const req = new Request('http://localhost/x', { method: 'POST', body: 'x'.repeat(10), headers: { 'content-length': '5000' } });
+    await expect(readBodyCapped(req, 1_000)).rejects.toBeInstanceOf(PayloadTooLargeError);
+  });
+
+  it('applies to JSON bodies sent without Content-Length', async () => {
+    const { req } = chunkedRequest(2_000, 1_024); // 2 MB against the 1 MB cap
+    await expect(parseJson(req as never, z.object({}))).rejects.toBeInstanceOf(PayloadTooLargeError);
+  });
+});
+
+describe('zodFieldErrors', () => {
+  it('lists at most 50 fields however many issues there are', () => {
+    const result = z.array(z.string()).safeParse(Array.from({ length: 500 }, () => 1));
+    expect(Object.keys(zodFieldErrors(result.error!))).toHaveLength(50);
   });
 });

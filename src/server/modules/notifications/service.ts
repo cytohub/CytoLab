@@ -1,5 +1,6 @@
 import 'server-only';
 import { and, count, desc, eq, inArray, isNull, lt } from 'drizzle-orm';
+import { isReasonableInstant } from '@/domain/dates';
 import type { NotificationType } from '@/domain/enums';
 import { entityHref } from '@/lib/routes';
 import type { AuthContext } from '../../auth/context';
@@ -26,7 +27,7 @@ export async function listNotifications(
   if (query.unread) filters.push(isNull(notifications.readAt));
   if (query.before) {
     const before = new Date(query.before);
-    if (!Number.isNaN(before.getTime())) filters.push(lt(notifications.createdAt, before));
+    if (isReasonableInstant(before)) filters.push(lt(notifications.createdAt, before));
   }
 
   const rows = await db()

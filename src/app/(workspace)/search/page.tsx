@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { FlaskConical, FolderKanban, Search as SearchIcon, User } from 'lucide-react';
+import { searchQuerySchema } from '@/domain/schemas/platform';
 import { requireServerAuth } from '@/server/auth/request';
 import { search } from '@/server/modules/search/service';
 import { Card } from '@/components/ui/card';
@@ -14,11 +15,14 @@ export const dynamic = 'force-dynamic';
 
 const ICONS = { project: FolderKanban, experiment: FlaskConical, user: User } as const;
 
-export default async function SearchPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
+export default async function SearchPage({ searchParams }: { searchParams: Promise<{ q?: string | string[] }> }) {
   const ctx = await requireServerAuth();
   const { q } = await searchParams;
-  const query = (q ?? '').trim();
-  const results = query ? await search(ctx, { q: query, limit: 20 }) : null;
+  const raw = (Array.isArray(q) ? q[0] : q)?.trim() ?? '';
+  // Same limits as GET /api/v1/search: the query length drives search cost.
+  const parsed = raw ? searchQuerySchema.safeParse({ q: raw, limit: 20 }) : null;
+  const query = parsed?.success ? parsed.data.q : raw.slice(0, 80);
+  const results = parsed?.success ? await search(ctx, parsed.data) : null;
 
   return (
     <PageContainer className="max-w-3xl">
@@ -29,6 +33,8 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
 
       {!query ? (
         <EmptyState icon={<SearchIcon />} title="Start typing to search" description="Search matches names, identifiers, objectives, and more." />
+      ) : parsed && !parsed.success ? (
+        <EmptyState icon={<SearchIcon />} title="That search can’t be run" description="Use at most 200 characters, without control characters." />
       ) : !results || results.total === 0 ? (
         <EmptyState icon={<SearchIcon />} title={`No results for “${query}”`} description="Try a different term or check the spelling." />
       ) : (

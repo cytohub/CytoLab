@@ -1,13 +1,13 @@
 import { z } from 'zod';
 import { LINK_TYPES, ROLES, SEARCH_OBJECT_TYPES, TEAM_ROLES } from '../enums';
-import { colorToken, csv, dateOnly, optionalText, queryBoolean, requiredText, uuid } from './common';
+import { boundedArray, colorToken, csv, dateOnly, isStorableText, optionalText, queryBoolean, requiredText, uuid } from './common';
 
 // ---------------------------------------------------------------------------
 // Auth
 // ---------------------------------------------------------------------------
 
 export const loginSchema = z.object({
-  email: z.email({ error: 'Enter a valid email address' }).trim().toLowerCase(),
+  email: z.email({ error: 'Enter a valid email address' }).max(254, { error: 'Enter a valid email address' }).trim().toLowerCase(),
   password: z.string().min(1, { error: 'Password is required' }).max(200),
 });
 export type LoginInput = z.input<typeof loginSchema>;
@@ -25,7 +25,7 @@ export const createCommentSchema = z.object({
 export type CreateCommentInput = z.output<typeof createCommentSchema>;
 export const updateCommentSchema = z.object({ body: requiredText(5_000, 'Comment') });
 
-export const setTagsSchema = z.object({ tagIds: z.array(uuid).max(20) });
+export const setTagsSchema = z.object({ tagIds: boundedArray(uuid, 20) });
 
 export const createTagSchema = z.object({
   name: requiredText(40, 'Tag name'),
@@ -45,10 +45,10 @@ export type CreateLinkInput = z.output<typeof createLinkSchema>;
 
 export const createMemberSchema = z.object({
   name: requiredText(120, 'Name'),
-  email: z.email({ error: 'Enter a valid email address' }).trim().toLowerCase(),
+  email: z.email({ error: 'Enter a valid email address' }).max(254, { error: 'Enter a valid email address' }).trim().toLowerCase(),
   title: optionalText(120),
   role: z.enum(ROLES).default('researcher'),
-  teamIds: z.array(uuid).max(20).default([]),
+  teamIds: boundedArray(uuid, 20).default([]),
 });
 export type CreateMemberInput = z.output<typeof createMemberSchema>;
 
@@ -101,7 +101,7 @@ export const updateExperimentTypeSchema = createExperimentTypeSchema.partial().e
 // ---------------------------------------------------------------------------
 
 export const searchQuerySchema = z.object({
-  q: z.string().trim().min(1, { error: 'Enter a search term' }).max(200),
+  q: z.string().trim().min(1, { error: 'Enter a search term' }).max(200).refine(isStorableText, { error: 'Contains characters that cannot be stored' }),
   types: csv(z.enum(SEARCH_OBJECT_TYPES)),
   limit: z.coerce.number().int().min(1).max(50).default(8),
 });
@@ -126,7 +126,7 @@ export const notificationsQuerySchema = z.object({
 
 export const markNotificationsSchema = z
   .object({
-    ids: z.array(uuid).max(200).optional(),
+    ids: boundedArray(uuid, 200).optional(),
     all: z.boolean().optional(),
   })
   .refine((v) => v.all === true || (v.ids?.length ?? 0) > 0, { error: 'Provide ids or all: true' });
