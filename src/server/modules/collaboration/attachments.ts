@@ -1,6 +1,6 @@
 import 'server-only';
-import { and, desc, eq, isNull } from 'drizzle-orm';
-import { ForbiddenError, NotFoundError, PayloadTooLargeError, ValidationError } from '@/domain/errors';
+import { and, desc, eq, isNull, sum } from 'drizzle-orm';
+import { ConflictError, ForbiddenError, NotFoundError, PayloadTooLargeError, ValidationError } from '@/domain/errors';
 import { MAX_DESCRIPTION_CHARS, normalizeContentType, normalizeFileName } from '@/domain/files';
 import { canDeleteAttachment } from '@/domain/permissions';
 import { actorOf, type AuthContext } from '../../auth/context';
@@ -8,6 +8,7 @@ import { authorize } from '../../authz';
 import { db } from '../../db/client';
 import { attachments, users } from '../../db/schema';
 import { env } from '../../env';
+import { RateLimiter } from '../../http/rate-limit';
 import { getEntityRef } from '../../platform/entities';
 import { recordEvent } from '../../platform/events';
 import { newStorageKey, sha256, storage } from '../../platform/storage';
@@ -42,10 +43,23 @@ function isAllowedType(contentType: string): boolean {
   return ALLOWED_EXACT.has(contentType) || ALLOWED_PREFIXES.some((p) => contentType.startsWith(p));
 }
 
+/** 60 uploads per hour per person. */
+const uploadLimiter = new RateLimiter(60, 60 * 60 * 1000, 'You are uploading files faster than allowed. Try again later.');
+
 /** Checked before an upload body is read, so a refused upload costs nothing. */
 export async function assertCanUpload(ctx: AuthContext, entityId: string): Promise<void> {
   authorize(ctx, 'attachment:upload');
   await getEntityRef(ctx, entityId);
+  uploadLimiter.consume(ctx.userId);
+}
+
+/**
+ * Bytes an organization stores, deleted attachments included: deletion is a
+ * soft delete, so their files stay on disk for the record.
+ */
+async function storedBytes(orgId: string): Promise<number> {
+  const [row] = await db().select({ total: sum(attachments.sizeBytes) }).from(attachments).where(eq(attachments.orgId, orgId));
+  return Number(row?.total ?? 0);
 }
 
 export async function listAttachments(ctx: AuthContext, entityId: string): Promise<AttachmentView[]> {
@@ -100,6 +114,12 @@ export async function createAttachment(
     throw new ValidationError('The description is too long', { description: [`Must be at most ${MAX_DESCRIPTION_CHARS} characters`] });
   }
 
+  const quota = env().MAX_ORG_STORAGE_BYTES;
+  const used = await storedBytes(ctx.orgId);
+  if (used + file.data.byteLength > quota) {
+    throw new ConflictError('This organization has used its file storage allowance', { limitBytes: quota, usedBytes: used });
+  }
+
   const storageKey = newStorageKey(ctx.orgId);
   await storage().put(storageKey, file.data, contentType);
 
@@ -134,7 +154,7 @@ export async function createAttachment(
   }
 }
 
-export async function getAttachmentForDownload(ctx: AuthContext, attachmentId: string): Promise<{ fileName: string; contentType: string; data: Uint8Array }> {
+export async function getAttachmentForDownload(ctx: AuthContext, attachmentId: string): Promise<{ fileName: string; contentType: string; body: ReadableStream<Uint8Array>; size: number }> {
   const [row] = await db()
     .select({ id: attachments.id, entityId: attachments.entityId, fileName: attachments.fileName, contentType: attachments.contentType, storageKey: attachments.storageKey })
     .from(attachments)
@@ -142,8 +162,8 @@ export async function getAttachmentForDownload(ctx: AuthContext, attachmentId: s
     .limit(1);
   if (!row) throw new NotFoundError('Attachment');
   await getEntityRef(ctx, row.entityId, { includeDeleted: true }); // re-check tenant access to the parent
-  const data = await storage().get(row.storageKey);
-  return { fileName: row.fileName, contentType: row.contentType, data };
+  const { body, size } = await storage().open(row.storageKey);
+  return { fileName: row.fileName, contentType: row.contentType, body, size };
 }
 
 export async function deleteAttachment(ctx: AuthContext, attachmentId: string): Promise<void> {
