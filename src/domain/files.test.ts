@@ -25,10 +25,11 @@ describe('upload content types', () => {
   });
 
   it('serves anything a browser would run as opaque bytes', () => {
-    for (const type of ['text/html', 'image/svg+xml', 'application/xhtml+xml', 'text/xml', 'application/javascript']) {
+    for (const type of ['text/html', 'image/svg+xml', 'application/xhtml+xml', 'text/xml', 'application/javascript', 'text/x-javascript', 'text/ecmascript', 'text/jscript', 'text/css', 'text/xsl', 'image/x-unknown']) {
       expect(downloadContentType(type)).toBe('application/octet-stream');
     }
     expect(downloadContentType('image/png')).toBe('image/png');
     expect(downloadContentType('text/csv')).toBe('text/csv');
+    expect(downloadContentType('application/pdf')).toBe('application/pdf');
   });
 });

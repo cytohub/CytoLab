@@ -3,15 +3,28 @@
  * Pure, so the upload handler, the download route and tests share one version.
  */
 
-/** Types a browser would run or render as a document; they are downloaded as opaque bytes. */
-const ACTIVE_TYPES = new Set([
-  'text/html',
-  'application/xhtml+xml',
-  'image/svg+xml',
-  'text/xml',
-  'application/xml',
-  'text/javascript',
-  'application/javascript',
+/**
+ * Types served as stored: ones a browser neither runs nor renders as a page.
+ * Everything else is downloaded as opaque bytes, since uploads accept any
+ * `text/*` and `image/*` and a blocklist misses aliases such as
+ * `text/x-javascript`, which would load as a same-origin script.
+ */
+const PASSIVE_TYPES = new Set([
+  'text/plain',
+  'text/csv',
+  'application/json',
+  'application/pdf',
+  'image/png',
+  'image/jpeg',
+  'image/gif',
+  'image/webp',
+  'image/avif',
+  'image/bmp',
+  'image/tiff',
+  'application/zip',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
 ]);
 
 const MEDIA_TYPE_RE = /^[a-z0-9][a-z0-9!#$&^_.+-]{0,63}\/[a-z0-9][a-z0-9!#$&^_.+-]{0,63}$/;
@@ -34,5 +47,5 @@ export function normalizeFileName(raw: string): string {
 
 /** The content type to serve a stored file as. */
 export function downloadContentType(stored: string): string {
-  return ACTIVE_TYPES.has(stored) ? 'application/octet-stream' : stored;
+  return PASSIVE_TYPES.has(stored) ? stored : 'application/octet-stream';
 }
