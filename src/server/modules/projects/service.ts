@@ -15,6 +15,7 @@ import { routes } from '@/lib/routes';
 import { actorOf, type AuthContext } from '../../auth/context';
 import { authorize } from '../../authz';
 import { db } from '../../db/client';
+import { escapeLike, isUniqueViolation } from '../../db/sql-utils';
 import { experiments, milestones, projects, researchAreas, teams, users } from '../../db/schema';
 import { registerEntity, setEntityDeleted, syncEntityLabel } from '../../platform/entities';
 import { recordEvent } from '../../platform/events';
@@ -135,7 +136,7 @@ export async function listProjects(ctx: AuthContext, query: Partial<ListProjects
   if (query.ownerId?.length) filters.push(inArray(projects.ownerId, query.ownerId));
   if (query.researchAreaId?.length) filters.push(inArray(projects.researchAreaId, query.researchAreaId));
   if (query.q) {
-    const term = `%${query.q}%`;
+    const term = `%${escapeLike(query.q)}%`;
     filters.push(or(ilike(projects.name, term), ilike(projects.code, term))!);
   }
   const where = and(...filters);
@@ -445,10 +446,7 @@ export async function deleteProject(ctx: AuthContext, ref: string): Promise<void
 }
 
 function translateProjectConflict(err: unknown): unknown {
-  // Drizzle wraps the driver error; the pg code may be on the error or its cause.
-  const codes = [err, (err as { cause?: unknown })?.cause]
-    .map((e) => (e && typeof e === 'object' ? (e as { code?: string }).code : undefined));
-  if (codes.includes('23505')) {
+  if (isUniqueViolation(err)) {
     return new ValidationError('That project code is already in use', { code: ['Choose a different project code'] });
   }
   return err;

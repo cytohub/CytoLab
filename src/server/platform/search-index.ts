@@ -5,6 +5,7 @@ import { entityHref } from '@/lib/routes';
 import type { AuthContext } from '../auth/context';
 import { db, type Executor } from '../db/client';
 import { searchDocuments } from '../db/schema';
+import { escapeLike } from '../db/sql-utils';
 
 export interface SearchDocumentInput {
   objectType: SearchObjectType;
@@ -81,10 +82,6 @@ export function toPrefixQuery(q: string): string | null {
     })
     .slice(0, 8);
   return terms.length ? terms.join(' & ') : null;
-}
-
-function escapeLike(value: string): string {
-  return value.replace(/[\\%_]/g, (c) => `\\${c}`);
 }
 
 /**

@@ -18,6 +18,7 @@ import type { PublicDemoLock } from '@/domain/public-demo';
 import type { AuthContext } from '../auth/context';
 import { authFromRequest } from '../auth/request';
 import { sessionCookieName } from '../auth/sessions';
+import { pgErrorCode } from '../db/sql-utils';
 import { env } from '../env';
 import { logger, type Logger } from '../lib/logger';
 import { enforcePublicDemoWrite } from './public-demo';
@@ -193,39 +194,20 @@ export function validate<S extends z.ZodType>(schema: S, value: unknown): z.outp
 // Error mapping
 // ---------------------------------------------------------------------------
 
-interface PgErrorLike {
-  code?: string;
-  constraint_name?: string;
-  constraint?: string;
-}
-
-function pgError(err: unknown): PgErrorLike | null {
-  const candidates = [err, (err as { cause?: unknown })?.cause];
-  for (const c of candidates) {
-    if (c && typeof c === 'object' && typeof (c as PgErrorLike).code === 'string' && /^[0-9A-Z]{5}$/.test((c as PgErrorLike).code!)) {
-      return c as PgErrorLike;
-    }
-  }
-  return null;
-}
-
 export function toAppError(err: unknown): AppError | null {
   if (err instanceof AppError) return err;
   if (err instanceof ZodError) return new ValidationError('Some fields are invalid', zodFieldErrors(err));
-  const pg = pgError(err);
-  if (pg?.code === '23505') {
-    return new ConflictError('A record with the same unique value already exists', {
-      constraint: pg.constraint_name ?? pg.constraint,
-    });
-  }
-  if (pg?.code === '23503') return new BadRequestError('A referenced record does not exist');
-  if (pg?.code === '23514') return new ValidationError('A value violates a data rule');
+  const code = pgErrorCode(err);
+  // Constraint and table names stay in the logs, not in responses.
+  if (code === '23505') return new ConflictError('A record with the same unique value already exists');
+  if (code === '23503') return new BadRequestError('A referenced record does not exist');
+  if (code === '23514') return new ValidationError('A value violates a data rule');
   // Bodies and query strings are validated, so a malformed value reaching
   // Postgres comes from a path segment such as /milestones/not-a-uuid (22P02)
   // or one holding a NUL byte (22021): either way, no such resource.
-  if (pg?.code === '22P02' || pg?.code === '22021') return new NotFoundError('Resource');
+  if (code === '22P02' || code === '22021') return new NotFoundError('Resource');
   // Any other data exception (out-of-range number or date) is a bad value.
-  if (pg?.code?.startsWith('22')) return new ValidationError('A value is out of range or malformed');
+  if (code?.startsWith('22')) return new ValidationError('A value is out of range or malformed');
   return null;
 }
 
@@ -242,7 +224,17 @@ function errorResponse(err: AppError, requestId: string): NextResponse<ApiErrorB
 function finalize(res: Response, requestId: string): Response {
   res.headers.set('x-request-id', requestId);
   if (!res.headers.has('cache-control')) res.headers.set('cache-control', 'no-store');
+  // API responses are data: if one is ever opened as a page, it can load nothing and run nothing.
+  if (!res.headers.has('content-security-policy')) res.headers.set('content-security-policy', "default-src 'none'; frame-ancestors 'none'");
   return res;
+}
+
+const REQUEST_ID_RE = /^[A-Za-z0-9._:-]{1,64}$/;
+
+/** A caller's correlation ID is kept only if it is a plain token; otherwise a fresh one is issued. */
+function requestIdFor(req: NextRequest): string {
+  const incoming = req.headers.get('x-request-id');
+  return incoming && REQUEST_ID_RE.test(incoming) ? incoming : crypto.randomUUID();
 }
 
 function toResponse(result: unknown): Response {
@@ -276,7 +268,7 @@ function wrap<P extends RouteParams, A>(
   options: RouteOptions = {},
 ) {
   return async (req: NextRequest, routeContext: RouteContextLike<P>): Promise<Response> => {
-    const requestId = req.headers.get('x-request-id')?.slice(0, 64) || crypto.randomUUID();
+    const requestId = requestIdFor(req);
     const log = logger.child({ requestId, method: req.method, path: req.nextUrl.pathname });
     try {
       assertSameOrigin(req);

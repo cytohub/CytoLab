@@ -9,6 +9,7 @@ import { routes } from '@/lib/routes';
 import type { AuthContext } from '../../auth/context';
 import { authorize } from '../../authz';
 import { db, type Executor } from '../../db/client';
+import { isUniqueViolation } from '../../db/sql-utils';
 import { orgMemberships, teamMemberships, teams, users } from '../../db/schema';
 import { hashPassword } from '../../auth/password';
 import { recordEvent } from '../../platform/events';
@@ -223,7 +224,7 @@ export async function createTeam(ctx: AuthContext, input: CreateTeamInput): Prom
     await recordEvent(tx, ctx, { action: 'team.created', entityId: null, projectId: null, activity: false, audit: { action: 'create', resourceType: 'team', resourceId: row!.id, changes: null } });
     return row!.id;
   }).catch((err) => {
-    if (err && typeof err === 'object' && (err as { code?: string }).code === '23505') throw new ValidationError('A team with that name already exists', { name: ['Choose a different name'] });
+    if (isUniqueViolation(err)) throw new ValidationError('A team with that name already exists', { name: ['Choose a different name'] });
     throw err;
   });
   return getTeam(ctx, teamId);
