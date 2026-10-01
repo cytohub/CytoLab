@@ -185,6 +185,8 @@ export async function updateExperiment(ctx: AuthContext, experimentId: string, i
     });
   }
 
+  assertDatesFitStatus(ctx, current, input, statusChanging ? nextStatus! : current.status);
+
   const patch: Record<string, unknown> = { ...rest };
   if (input.teamId === undefined && input.projectId && project) patch.teamId = project.teamId;
 
@@ -218,10 +220,13 @@ export async function updateExperiment(ctx: AuthContext, experimentId: string, i
       notify.push({ recipientId: input.researcherId, type: 'assignment', title: `You were assigned ${current.displayId}`, body: current.name });
     }
 
+    const newlyBlocked = typeof patch.blockedReason === 'string' && patch.blockedReason !== current.blockedReason;
+    if (current.projectOwnerId && ((statusChanging && nextStatus === 'failed') || newlyBlocked)) {
+      const what = statusChanging && nextStatus === 'failed' ? EXPERIMENT_STATUS_META.failed.label.toLowerCase() : 'blocked';
+      notify.push({ recipientId: current.projectOwnerId, type: 'status_change', title: `${current.displayId} ${what}`, body: current.name });
+    }
+
     if (statusChanging) {
-      if ((nextStatus === 'failed' || (patch.blockedReason && nextStatus === undefined)) && current.projectOwnerId) {
-        notify.push({ recipientId: current.projectOwnerId, type: 'status_change', title: `${current.displayId} ${EXPERIMENT_STATUS_META[nextStatus!].label.toLowerCase()}`, body: current.name });
-      }
       await recordEvent(tx, ctx, {
         action: 'experiment.status_changed',
         entityId: experimentId,
@@ -249,6 +254,41 @@ export async function updateExperiment(ctx: AuthContext, experimentId: string, i
   // Read after the transaction commits (getExperimentDetail uses the pool, so a
   // read inside the transaction would not see the just-written row).
   return getExperimentDetail(ctx, experimentId);
+}
+
+const OPEN_STATUSES: ReadonlySet<string> = new Set(['planned', 'in_progress']);
+const FINISHED_STATUSES: ReadonlySet<string> = new Set(['completed', 'failed']);
+
+/**
+ * Dates and blockers set directly must agree with the status the save leaves:
+ * a completion date belongs to a finished experiment, on or after its start and
+ * not in the future, and only open work can be blocked. Otherwise a completion
+ * could be backdated before the status change, skewing time-to-completion.
+ */
+function assertDatesFitStatus(
+  ctx: AuthContext,
+  current: { startDate: string | null; completedDate: string | null },
+  input: Pick<UpdateExperimentData, 'startDate' | 'completedDate' | 'blockedReason'>,
+  resultStatus: string,
+) {
+  if (input.completedDate) {
+    if (!FINISHED_STATUSES.has(resultStatus)) {
+      throw new ValidationError('Only a completed or failed experiment has a completion date', { completedDate: ['Complete the experiment first'] });
+    }
+    if (input.completedDate > todayIn(ctx.org.timezone)) {
+      throw new ValidationError('The completion date is in the future', { completedDate: ['Cannot be in the future'] });
+    }
+  }
+  if (input.startDate !== undefined || input.completedDate !== undefined) {
+    const start = input.startDate !== undefined ? input.startDate : current.startDate;
+    const completed = input.completedDate !== undefined ? input.completedDate : current.completedDate;
+    if (start && completed && completed < start) {
+      throw new ValidationError('The completion date is before the start date', { completedDate: ['Must be on or after the start date'] });
+    }
+  }
+  if (input.blockedReason && !OPEN_STATUSES.has(resultStatus)) {
+    throw new ValidationError('Only planned or in-progress experiments can be blocked', { blockedReason: ['Reopen the experiment first'] });
+  }
 }
 
 export async function deleteExperiment(ctx: AuthContext, experimentId: string): Promise<void> {

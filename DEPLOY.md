@@ -31,7 +31,7 @@ working on 2026-12-01.
 | Variable | Effect |
 | -------- | ------ |
 | `DEMO_MODE=true` | The sign-in page lists one demo account per role and shows the shared password. |
-| `PUBLIC_DEMO=true` | Uploads, users, teams and profiles become read-only (HTTP 403 with an explanation). All other writes are allowed but counted per visitor IP (HTTP 429 with `Retry-After` beyond the limit). The banner and sign-in page mention the nightly reset. It also allows `db:seed` and `db:reset` to run in production, but only while the database contains nothing except demo workspaces. |
+| `PUBLIC_DEMO=true` | Uploads, users, teams and profiles become read-only, and projects and experiments cannot be deleted (HTTP 403 with an explanation). All other writes are allowed but counted per visitor IP and in total (HTTP 429 with `Retry-After` beyond either limit). The banner and sign-in page mention the nightly reset. It also allows `db:seed` and `db:reset` to run in production, but only while the database contains nothing except demo workspaces. |
 | `CLIENT_IP_HEADER` | Which request header carries the visitor's real IP. It must be a header your proxy overwrites, so visitors cannot fake their address to dodge the limit. |
 | `CLIENT_IP_SECRET` | Behind Cloudflare: a secret the CDN adds to every request as `x-client-ip-secret`. `CLIENT_IP_HEADER` is believed only when it is present, because anyone can reach Railway directly and send their own `cf-connecting-ip`. |
 | `APP_URL` | The canonical address. In production, `www.<that host>` redirects to it. |
@@ -102,7 +102,8 @@ you want to deploy new code.
 
    On start, the container applies migrations as the owner
    (`MIGRATION_DATABASE_URL`), grants `cytolab_app` its access, then serves
-   the app as `cytolab_app` (`DATABASE_URL`). Use
+   the app as `cytolab_app` (`DATABASE_URL`), with the owner URL removed
+   from the server's environment. Use
    `CLIENT_IP_HEADER=cf-connecting-ip` instead if you will put Cloudflare's
    proxy in front (step 7, option A).
 2. In **Settings → Deploy**, set **Healthcheck Path** to `/api/v1/health`.

@@ -4,6 +4,7 @@ import { closeDb } from '../../src/server/db/client';
 import { resetEnvCache } from '../../src/server/env';
 import { assertCanUpload, createAttachment, getAttachmentForDownload } from '../../src/server/modules/collaboration/attachments';
 import { updateMember } from '../../src/server/modules/directory/service';
+import { createExperiment } from '../../src/server/modules/experiments/mutations';
 import { createProject } from '../../src/server/modules/projects/service';
 import { createWorkspace } from './helpers';
 
@@ -29,6 +30,14 @@ async function projectFor(ws: Awaited<ReturnType<typeof createWorkspace>>) {
   const admin = await ws.addUser('admin');
   const project = await createProject(admin, { name: 'P', code: `AU-${Math.random().toString(36).slice(2, 7).toUpperCase()}`, ownerId: admin.userId, status: 'active', priority: 'medium', description: null, researchAreaId: null, teamId: null, startDate: null, targetDate: null, notes: null });
   return { admin, project };
+}
+
+/** A researcher and an experiment they run, so they may add files to it. */
+async function uploaderWithExperiment(ws: Awaited<ReturnType<typeof createWorkspace>>) {
+  const { admin, project } = await projectFor(ws);
+  const uploader = await ws.addUser('researcher');
+  const experiment = await createExperiment(admin, { projectId: project.id, experimentTypeId: ws.typeId, name: 'Uploads', objective: null, hypothesis: null, researcherId: uploader.userId, teamId: null, status: 'planned', priority: 'medium', startDate: null, targetDate: null, protocolRef: null, notes: null, tagIds: [] });
+  return { uploader, target: experiment.id };
 }
 
 describe('the last admin (integration)', () => {
@@ -86,24 +95,22 @@ describe('attachment storage (integration)', () => {
 
   it('limits how many uploads one person starts per hour', async () => {
     const ws = await createWorkspace();
-    const { project } = await projectFor(ws);
-    const uploader = await ws.addUser('researcher');
+    const { uploader, target } = await uploaderWithExperiment(ws);
     const outcomes: Array<number | 'ok'> = [];
-    for (let i = 0; i < 61; i++) outcomes.push(await statusOf(assertCanUpload(uploader, project.id)));
+    for (let i = 0; i < 61; i++) outcomes.push(await statusOf(assertCanUpload(uploader, target)));
     expect(outcomes.slice(0, 60).every((o) => o === 'ok')).toBe(true);
     expect(outcomes[60]).toBe(429);
   });
 
   it('counts each upload once against the hourly limit', async () => {
     const ws = await createWorkspace();
-    const { project } = await projectFor(ws);
-    const uploader = await ws.addUser('researcher');
+    const { uploader, target } = await uploaderWithExperiment(ws);
     const outcomes: Array<number | 'ok'> = [];
     for (let i = 0; i < 60; i++) {
       // What the upload route does: check, read the body, then store.
-      outcomes.push(await statusOf(assertCanUpload(uploader, project.id).then(() => createAttachment(uploader, project.id, { fileName: `${i}.txt`, contentType: 'text/plain', data: new Uint8Array([i]) }))));
+      outcomes.push(await statusOf(assertCanUpload(uploader, target).then(() => createAttachment(uploader, target, { fileName: `${i}.txt`, contentType: 'text/plain', data: new Uint8Array([i]) }))));
     }
     expect(outcomes.every((o) => o === 'ok')).toBe(true);
-    expect(await statusOf(assertCanUpload(uploader, project.id))).toBe(429);
+    expect(await statusOf(assertCanUpload(uploader, target))).toBe(429);
   });
 });

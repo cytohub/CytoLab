@@ -12,9 +12,11 @@ import { db, type Executor } from '../../db/client';
 import { isUniqueViolation } from '../../db/sql-utils';
 import { orgMemberships, teamMemberships, teams, users } from '../../db/schema';
 import { hashPassword } from '../../auth/password';
+import { revokeMemberSessions } from '../../auth/sessions';
 import { recordEvent } from '../../platform/events';
 import { indexDocumentsMentioningTeam, indexDocumentsMentioningUser, indexUsers } from '../search/indexers';
 import { initialsOf, type UserSummary } from '../shared/presenters';
+import { isOrgMember } from '../shared/references';
 
 export interface MemberView extends UserSummary {
   role: { value: Role; label: string };
@@ -161,6 +163,9 @@ export async function updateMember(ctx: AuthContext, userId: string, input: Upda
     if (input.role !== undefined || input.status !== undefined) {
       await tx.update(orgMemberships).set({ ...(input.role ? { role: input.role } : {}), ...(input.status ? { status: input.status } : {}), updatedAt: new Date() }).where(eq(orgMemberships.id, membership.id));
     }
+    // Suspension already blocks every request; ending the sessions as well
+    // means reactivating someone later does not bring an old (possibly stolen) one back.
+    if (changes.status && input.status === 'suspended') await revokeMemberSessions(tx, ctx.orgId, userId);
     if (hasChanges(changes)) {
       await recordEvent(tx, ctx, { action: 'member.updated', entityId: null, projectId: null, activity: false, audit: { action: 'update', resourceType: 'org_membership', resourceId: userId, changes } });
     }
@@ -263,8 +268,8 @@ export async function addTeamMember(ctx: AuthContext, teamId: string, input: { u
   authorize(ctx, 'team:manage');
   const [team] = await db().select({ id: teams.id }).from(teams).where(and(eq(teams.id, teamId), eq(teams.orgId, ctx.orgId), isNull(teams.deletedAt))).limit(1);
   if (!team) throw new NotFoundError('Team');
-  const [membership] = await db().select({ id: orgMemberships.id }).from(orgMemberships).where(and(eq(orgMemberships.orgId, ctx.orgId), eq(orgMemberships.userId, input.userId))).limit(1);
-  if (!membership) throw new ValidationError('That person is not a member of this organization', { userId: ['Unknown member'] });
+  // Team membership grants scientists edit rights, so only active members join.
+  if (!(await isOrgMember(ctx, input.userId))) throw new ValidationError('That person is not an active member of this organization', { userId: ['Unknown member'] });
   await db().transaction(async (tx) => {
     const [existing] = await tx.select({ role: teamMemberships.role }).from(teamMemberships).where(and(eq(teamMemberships.teamId, teamId), eq(teamMemberships.userId, input.userId))).limit(1);
     await tx.insert(teamMemberships).values({ teamId, userId: input.userId, orgId: ctx.orgId, role: input.role }).onConflictDoUpdate({ target: [teamMemberships.teamId, teamMemberships.userId], set: { role: input.role } });

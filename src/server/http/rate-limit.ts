@@ -13,7 +13,7 @@ export class RateLimiter {
     private readonly limit: number,
     private readonly windowMs: number,
     private readonly message?: string,
-    /** Keys kept at most; past it the oldest are dropped, so a flood of distinct keys cannot grow memory without bound. */
+    /** Keys kept at most, so a flood of distinct keys cannot grow memory without bound. */
     private readonly maxKeys = 20_000,
   ) {}
 
@@ -22,7 +22,7 @@ export class RateLimiter {
     if (!entry || entry.resetAt <= now) {
       this.hits.delete(key); // re-insert at the end, keeping the map in age order
       this.hits.set(key, { count: 1, resetAt: now + this.windowMs });
-      this.prune(now);
+      this.prune(now, key);
       return;
     }
     entry.count += 1;
@@ -37,14 +37,30 @@ export class RateLimiter {
     return this.hits.size;
   }
 
-  private prune(now: number) {
+  /**
+   * Drops expired entries, then, while over the cap, the entry with the fewest
+   * hits (the oldest among equals). Evicting by age alone would let a flood of
+   * junk keys push out a counter someone is guessing against and start it over;
+   * by count, the flood has to out-hit that counter first. The key just added
+   * is never the one dropped, or a full map would stop counting it at all.
+   */
+  private prune(now: number, added: string) {
     if (now - this.lastPrune > 1_000) {
       this.lastPrune = now;
       for (const [key, entry] of this.hits) if (entry.resetAt <= now) this.hits.delete(key);
     }
-    for (const key of this.hits.keys()) {
-      if (this.hits.size <= this.maxKeys) break;
-      this.hits.delete(key);
+    while (this.hits.size > this.maxKeys) {
+      let victim: string | undefined;
+      let fewest = Infinity;
+      for (const [key, entry] of this.hits) {
+        if (key !== added && entry.count < fewest) {
+          victim = key;
+          fewest = entry.count;
+          if (fewest === 1) break; // the oldest single hit; nothing has fewer
+        }
+      }
+      if (victim === undefined) break;
+      this.hits.delete(victim);
     }
   }
 }

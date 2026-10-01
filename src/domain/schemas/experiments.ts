@@ -125,7 +125,10 @@ export const inputSchema = z.object({
   unit: optionalText(40),
   notes: optionalText(1_000),
 });
-export const updateInputSchema = inputSchema.partial();
+// Zod 4 still applies a field's default under .partial(), so each defaulted
+// field is redeclared without one; otherwise a PATCH that leaves it out would
+// reset it to the create-time default.
+export const updateInputSchema = inputSchema.partial().extend({ inputType: z.enum(INPUT_TYPES).optional() });
 export type ExperimentInputInput = z.input<typeof inputSchema>;
 
 export const stepSchema = z.object({
@@ -144,7 +147,7 @@ export const observationSchema = z.object({
   significance: z.enum(OBSERVATION_SIGNIFICANCE).default('routine'),
   observedAt: isoInstant.optional(),
 });
-export const updateObservationSchema = observationSchema.partial();
+export const updateObservationSchema = observationSchema.partial().extend({ significance: z.enum(OBSERVATION_SIGNIFICANCE).optional() });
 export type ObservationInput = z.input<typeof observationSchema>;
 
 export const resultSchema = z

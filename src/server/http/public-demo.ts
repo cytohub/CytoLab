@@ -1,6 +1,6 @@
 import 'server-only';
 import { ForbiddenError } from '@/domain/errors';
-import { PUBLIC_DEMO_LOCKS, PUBLIC_DEMO_WRITE_LIMIT, type PublicDemoLock } from '@/domain/public-demo';
+import { PUBLIC_DEMO_LOCKS, PUBLIC_DEMO_TOTAL_WRITE_LIMIT, PUBLIC_DEMO_WRITE_LIMIT, type PublicDemoLock } from '@/domain/public-demo';
 import { clientIp } from '../auth/request';
 import { env } from '../env';
 import { ipBucket } from './client-ip';
@@ -12,6 +12,12 @@ export const demoWriteLimiter = new RateLimiter(
   'You are making changes faster than the public demo allows. Try again in a few minutes.',
 );
 
+export const demoTotalWriteLimiter = new RateLimiter(
+  PUBLIC_DEMO_TOTAL_WRITE_LIMIT.limit,
+  PUBLIC_DEMO_TOTAL_WRITE_LIMIT.windowMs,
+  'The public demo is taking more changes than it allows right now. Try again in a few minutes.',
+);
+
 /**
  * Applies the public-demo guardrails to an authenticated write. A no-op unless
  * PUBLIC_DEMO is on. Locked handlers are refused before their body is read;
@@ -21,6 +27,7 @@ export function enforcePublicDemoWrite(headers: Headers, lock: PublicDemoLock | 
   if (!env().PUBLIC_DEMO) return;
   if (lock) throw new ForbiddenError(PUBLIC_DEMO_LOCKS[lock]);
   demoWriteLimiter.consume(ipBucket(clientIp(headers)));
+  demoTotalWriteLimiter.consume('all');
 }
 
 /** The lock message to show in the UI, or null when the area is writable. */

@@ -13,6 +13,12 @@ import { demoWorkspacesOpen, env } from '../env';
 import { createAuthContext, type AuthContext } from './context';
 
 export { SESSION_TTL_MS };
+
+/**
+ * However active it stays, a session ends this long after sign-in, so a stolen
+ * token cannot be kept alive indefinitely by using it.
+ */
+export const SESSION_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 /** Avoid a write on every request: refresh last-seen at most this often. */
 const TOUCH_INTERVAL_MS = 5 * 60 * 1000;
 
@@ -85,7 +91,14 @@ export async function resolveSession(token: string, meta: RequestMeta): Promise<
     .innerJoin(users, eq(users.id, sessions.userId))
     .innerJoin(organizations, eq(organizations.id, sessions.orgId))
     .innerJoin(orgMemberships, and(eq(orgMemberships.orgId, sessions.orgId), eq(orgMemberships.userId, sessions.userId)))
-    .where(and(eq(sessions.tokenHash, hashToken(token)), isNull(sessions.revokedAt), gt(sessions.expiresAt, now)))
+    .where(
+      and(
+        eq(sessions.tokenHash, hashToken(token)),
+        isNull(sessions.revokedAt),
+        gt(sessions.expiresAt, now),
+        gt(sessions.createdAt, new Date(now.getTime() - SESSION_MAX_AGE_MS)),
+      ),
+    )
     .limit(1);
 
   if (!row || row.userStatus !== 'active' || row.membershipStatus !== 'active') return null;
@@ -123,4 +136,12 @@ export async function resolveSession(token: string, meta: RequestMeta): Promise<
     },
     org: { name: row.orgName, slug: row.orgSlug, timezone: row.timezone, isDemo: row.isDemo },
   });
+}
+
+/** Ends every live session a person has in one organization (inside the caller's transaction). */
+export async function revokeMemberSessions(executor: Executor, orgId: string, userId: string): Promise<void> {
+  await executor
+    .update(sessions)
+    .set({ revokedAt: new Date() })
+    .where(and(eq(sessions.orgId, orgId), eq(sessions.userId, userId), isNull(sessions.revokedAt)));
 }
