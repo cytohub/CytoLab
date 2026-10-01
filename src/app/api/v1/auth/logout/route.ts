@@ -1,17 +1,17 @@
-import { cookies } from 'next/headers';
+import { NextResponse } from 'next/server';
 import { logout } from '@/server/modules/auth/service';
 import { requestMeta } from '@/server/auth/request';
-import { sessionCookieName } from '@/server/auth/sessions';
-import { ok, publicApi } from '@/server/http/api';
+import { clearedSessionCookieOptions, sessionCookieName } from '@/server/auth/sessions';
+import { publicApi } from '@/server/http/api';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 export const POST = publicApi(async ({ req, requestId }) => {
-  const cookieStore = await cookies();
   const name = sessionCookieName();
-  const token = cookieStore.get(name)?.value;
+  const token = req.cookies.get(name)?.value;
   if (token) await logout(token, requestMeta(req.headers, requestId));
-  cookieStore.delete(name);
-  return ok({ success: true });
+  const res = NextResponse.json({ data: { success: true } });
+  res.cookies.set(name, '', clearedSessionCookieOptions());
+  return res;
 });

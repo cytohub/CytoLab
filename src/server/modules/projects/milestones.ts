@@ -10,7 +10,7 @@ import { db } from '../../db/client';
 import { milestones, projects } from '../../db/schema';
 import { recordEvent } from '../../platform/events';
 import { bumpSequenceTo, nextSequenceValue } from '../../platform/sequences';
-import { isOrgMember } from '../shared/references';
+import { changed, isOrgMember } from '../shared/references';
 
 async function loadProjectForMilestone(ctx: AuthContext, projectId: string) {
   const [project] = await db()
@@ -98,7 +98,7 @@ export async function updateMilestone(ctx: AuthContext, milestoneId: string, inp
   if (!current) throw new NotFoundError('Milestone');
   const project = await loadProjectForMilestone(ctx, current.projectId);
   assertCanManage(ctx, project);
-  await assertOwnerInOrg(ctx, input.ownerId);
+  await assertOwnerInOrg(ctx, changed(input.ownerId, current.ownerId));
 
   const changes = diffFields(
     { title: current.title, description: current.description, dueDate: current.dueDate, status: current.status, ownerId: current.ownerId, position: current.position },

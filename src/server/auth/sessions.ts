@@ -3,7 +3,12 @@ import { createHash, randomBytes } from 'node:crypto';
 import { and, eq, gt, isNull } from 'drizzle-orm';
 import { db } from '../db/client';
 import { organizations, orgMemberships, sessions, teamMemberships, teams, users } from '../db/schema';
-import { SESSION_TTL_MS, sessionCookieName as cookieName, sessionCookieOptions as cookieOptions } from '@/lib/session-cookie';
+import {
+  SESSION_TTL_MS,
+  clearedSessionCookieOptions as clearedOptions,
+  sessionCookieName as cookieName,
+  sessionCookieOptions as cookieOptions,
+} from '@/lib/session-cookie';
 import { env } from '../env';
 import { createAuthContext, type AuthContext } from './context';
 
@@ -17,6 +22,10 @@ export function sessionCookieName(): string {
 
 export function sessionCookieOptions(expiresAt: Date) {
   return cookieOptions(env().NODE_ENV === 'production', expiresAt);
+}
+
+export function clearedSessionCookieOptions() {
+  return clearedOptions(env().NODE_ENV === 'production');
 }
 
 export function hashToken(token: string): string {

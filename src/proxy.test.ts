@@ -77,6 +77,12 @@ describe('proxy session cookie', () => {
     expect(refreshed(visitWith('/experiments', { 'sec-fetch-dest': 'document', cookie: '__Host-cytolab_session=short' }))).toBeUndefined();
   });
 
+  it('skips Next internal routes, which can be prerendered with a public s-maxage', () => {
+    for (const path of ['/_global-error', '/_not-found']) {
+      expect(refreshed(visitWith(path, { 'sec-fetch-dest': 'document', cookie: COOKIE })), path).toBeUndefined();
+    }
+  });
+
   it('uses the development cookie name outside production', () => {
     vi.stubEnv('NODE_ENV', 'development');
     const cookie = refreshed(visitWith('/experiments', { 'sec-fetch-dest': 'document', cookie: `cytolab_session=${TOKEN}` }), 'cytolab_session');
