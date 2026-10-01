@@ -12,6 +12,7 @@ import { authorize } from '../../authz';
 import { db } from '../../db/client';
 import { experiments, experimentTypes, researchAreas } from '../../db/schema';
 import { recordEvent } from '../../platform/events';
+import { indexExperimentsOfType } from '../search/indexers';
 
 export interface ExperimentTypeView {
   id: string;
@@ -71,6 +72,7 @@ export async function updateExperimentType(ctx: AuthContext, typeId: string, inp
     if (hasChanges(changes)) {
       await recordEvent(tx, ctx, { action: 'experiment_type.updated', entityId: null, projectId: null, activity: false, audit: { action: 'update', resourceType: 'experiment_type', resourceId: typeId, changes } });
     }
+    if (changes.name) await indexExperimentsOfType(tx, ctx.orgId, typeId);
   });
   return (await listExperimentTypes(ctx)).find((t) => t.id === typeId)!;
 }

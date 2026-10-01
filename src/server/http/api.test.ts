@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ForbiddenError } from '@/domain/errors';
 import { resetEnvCache } from '../env';
-import { assertSameOrigin } from './api';
+import { assertSameOrigin, toAppError } from './api';
 
 // The app behind a TLS-terminating proxy: the server sees an internal address
 // over plain HTTP, while the browser talks to https://cytolab.ai.
@@ -55,5 +55,24 @@ describe('assertSameOrigin', () => {
 
   it('ignores reads', () => {
     expect(() => assertSameOrigin(request('GET', { host: 'cytolab.ai', origin: 'https://evil.example' }))).not.toThrow();
+  });
+});
+
+describe('toAppError', () => {
+  // Drizzle wraps driver errors, so the Postgres code sits on `cause`.
+  const pg = (code: string) => Object.assign(new Error('Failed query'), { cause: { code } });
+
+  it('turns a malformed UUID in the path into a 404, not a 500', () => {
+    expect(toAppError(pg('22P02'))?.status).toBe(404);
+  });
+
+  it('keeps mapping constraint violations', () => {
+    expect(toAppError(pg('23505'))?.status).toBe(409);
+    expect(toAppError(pg('23503'))?.status).toBe(400);
+    expect(toAppError(pg('23514'))?.status).toBe(422);
+  });
+
+  it('leaves unknown errors for the 500 handler', () => {
+    expect(toAppError(new Error('boom'))).toBeNull();
   });
 });

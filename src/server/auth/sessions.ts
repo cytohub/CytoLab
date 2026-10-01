@@ -3,26 +3,20 @@ import { createHash, randomBytes } from 'node:crypto';
 import { and, eq, gt, isNull } from 'drizzle-orm';
 import { db } from '../db/client';
 import { organizations, orgMemberships, sessions, teamMemberships, teams, users } from '../db/schema';
+import { SESSION_TTL_MS, sessionCookieName as cookieName, sessionCookieOptions as cookieOptions } from '@/lib/session-cookie';
 import { env } from '../env';
 import { createAuthContext, type AuthContext } from './context';
 
-export const SESSION_TTL_MS = 14 * 24 * 60 * 60 * 1000;
+export { SESSION_TTL_MS };
 /** Avoid a write on every request: refresh last-seen at most this often. */
 const TOUCH_INTERVAL_MS = 5 * 60 * 1000;
 
-/** `__Host-` binds the cookie to this exact origin over HTTPS (no Domain, Path=/). */
 export function sessionCookieName(): string {
-  return env().NODE_ENV === 'production' ? '__Host-cytolab_session' : 'cytolab_session';
+  return cookieName(env().NODE_ENV === 'production');
 }
 
 export function sessionCookieOptions(expiresAt: Date) {
-  return {
-    httpOnly: true,
-    sameSite: 'lax' as const,
-    secure: env().NODE_ENV === 'production',
-    path: '/',
-    expires: expiresAt,
-  };
+  return cookieOptions(env().NODE_ENV === 'production', expiresAt);
 }
 
 export function hashToken(token: string): string {

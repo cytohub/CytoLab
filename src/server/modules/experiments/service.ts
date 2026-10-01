@@ -4,6 +4,7 @@ import { evaluateAttention, type AttentionReason } from '@/domain/attention';
 import { todayIn, dateOf } from '@/domain/dates';
 import type { ExperimentStatus, Priority } from '@/domain/enums';
 import { NotFoundError } from '@/domain/errors';
+import { isUuid } from '@/domain/identifiers';
 import { EXPERIMENT_STATUS_META, PRIORITY_META } from '@/domain/labels';
 import type { ListExperimentsQuery } from '@/domain/schemas/experiments';
 import { routes } from '@/lib/routes';
@@ -202,7 +203,7 @@ export async function listExperimentsForProject(ctx: AuthContext, projectId: str
 }
 
 export async function resolveExperimentId(ctx: AuthContext, ref: string): Promise<string> {
-  const byId = /^[0-9a-f]{8}-/i.test(ref);
+  const byId = isUuid(ref);
   const [row] = await db()
     .select({ id: experiments.id })
     .from(experiments)

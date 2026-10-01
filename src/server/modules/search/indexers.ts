@@ -1,6 +1,7 @@
 import 'server-only';
-import { sql, type SQL } from 'drizzle-orm';
+import { and, eq, isNull, sql, type SQL } from 'drizzle-orm';
 import type { Executor } from '../../db/client';
+import { experiments, orgMemberships, projects, teamMemberships } from '../../db/schema';
 
 /**
  * Indexers pull from the source of truth and upsert search documents with
@@ -87,6 +88,36 @@ export async function indexUsers(tx: Executor, orgId: string, ids?: readonly str
     where d.org_id = ${orgId} and d.object_type = 'user' and m.org_id = d.org_id
       and m.user_id = d.object_id and m.status <> 'active'
       ${idFilter(sql`m.user_id`, ids)}`);
+}
+
+// --- Documents that embed another record's name -----------------------------
+// Project and experiment documents copy names from users, teams and experiment
+// types, so renaming one of those must refresh the documents that carry it.
+
+/** A person's own entry plus the projects they own and experiments they run, in every org they belong to. */
+export async function indexDocumentsMentioningUser(tx: Executor, userId: string): Promise<void> {
+  const memberships = await tx.select({ orgId: orgMemberships.orgId }).from(orgMemberships).where(eq(orgMemberships.userId, userId));
+  for (const { orgId } of memberships) {
+    await indexUsers(tx, orgId, [userId]);
+    const owned = await tx.select({ id: projects.id }).from(projects).where(and(eq(projects.orgId, orgId), eq(projects.ownerId, userId), isNull(projects.deletedAt)));
+    await indexProjects(tx, orgId, owned.map((r) => r.id));
+    const run = await tx.select({ id: experiments.id }).from(experiments).where(and(eq(experiments.orgId, orgId), eq(experiments.researcherId, userId), isNull(experiments.deletedAt)));
+    await indexExperiments(tx, orgId, run.map((r) => r.id));
+  }
+}
+
+/** Projects assigned to a team and the team's members, whose entries list team names. */
+export async function indexDocumentsMentioningTeam(tx: Executor, orgId: string, teamId: string): Promise<void> {
+  const owned = await tx.select({ id: projects.id }).from(projects).where(and(eq(projects.orgId, orgId), eq(projects.teamId, teamId), isNull(projects.deletedAt)));
+  await indexProjects(tx, orgId, owned.map((r) => r.id));
+  const members = await tx.select({ userId: teamMemberships.userId }).from(teamMemberships).where(and(eq(teamMemberships.orgId, orgId), eq(teamMemberships.teamId, teamId)));
+  await indexUsers(tx, orgId, members.map((r) => r.userId));
+}
+
+/** Experiments of a type, whose subtitle carries the type name. */
+export async function indexExperimentsOfType(tx: Executor, orgId: string, typeId: string): Promise<void> {
+  const rows = await tx.select({ id: experiments.id }).from(experiments).where(and(eq(experiments.orgId, orgId), eq(experiments.experimentTypeId, typeId), isNull(experiments.deletedAt)));
+  await indexExperiments(tx, orgId, rows.map((r) => r.id));
 }
 
 export async function reindexOrganization(tx: Executor, orgId: string): Promise<void> {

@@ -20,6 +20,13 @@ export function formatMilestoneId(sequence: number): string {
   return `M${sequence}`;
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Whether a route reference is a record's UUID rather than a code or display ID. */
+export function isUuid(value: string): boolean {
+  return UUID_RE.test(value);
+}
+
 /** Project codes: 2–24 chars, uppercase letters/digits in dash-separated groups, e.g. CART-001. */
 export const PROJECT_CODE_RE = /^[A-Z0-9]+(?:-[A-Z0-9]+)*$/;
 export const PROJECT_CODE_MAX = 24;

@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from 'next/server';
+import { SESSION_TTL_MS, sessionCookieName, sessionCookieOptions } from '@/lib/session-cookie';
 
 /**
  * Per-request Content-Security-Policy.
@@ -66,12 +67,47 @@ function canonicalRedirect(request: NextRequest): NextResponse | null {
   return NextResponse.redirect(target, 308);
 }
 
+const SESSION_TOKEN_RE = /^[A-Za-z0-9_-]{16,128}$/;
+/** Page routes have no file extension; metadata files such as icon.svg do. */
+const FILE_PATH_RE = /\.[a-z0-9]+$/i;
+
+/**
+ * Whether the request renders a page: a document load, or the fetch the router
+ * makes for an in-app navigation or router.refresh(). Next strips its RSC
+ * headers before the proxy runs, so navigations are recognized by the
+ * browser's `Sec-Fetch-Dest: empty` instead; clients without Fetch Metadata
+ * fall back to `Accept: text/html`.
+ */
+function isPageRequest(request: NextRequest): boolean {
+  if (FILE_PATH_RE.test(request.nextUrl.pathname)) return false;
+  const dest = request.headers.get('sec-fetch-dest');
+  if (dest) return dest === 'document' || dest === 'empty';
+  return (request.headers.get('accept') ?? '').includes('text/html');
+}
+
+/**
+ * Pushes the session cookie's expiry forward on page loads and navigations, so
+ * someone who keeps working is not signed out 14 days after signing in. The
+ * token is echoed back unchanged and unchecked: the sessions table decides
+ * whether it is still valid. Static files never carry the cookie, so a shared
+ * cache cannot store it with them.
+ */
+function refreshSessionCookie(request: NextRequest, response: NextResponse, production: boolean): void {
+  if (!isPageRequest(request)) return;
+  const name = sessionCookieName(production);
+  const token = request.cookies.get(name)?.value;
+  if (!token || !SESSION_TOKEN_RE.test(token)) return;
+  response.cookies.set(name, token, sessionCookieOptions(production, new Date(Date.now() + SESSION_TTL_MS)));
+}
+
 export function proxy(request: NextRequest): NextResponse {
   // The other security headers (X-Frame-Options, nosniff, …) are set for every
   // route in next.config.ts. Only the nonce-based CSP needs per-request logic,
   // and only in production.
   if (process.env.NODE_ENV !== 'production') {
-    return NextResponse.next();
+    const response = NextResponse.next();
+    refreshSessionCookie(request, response, false);
+    return response;
   }
 
   const redirect = canonicalRedirect(request);
@@ -86,6 +122,7 @@ export function proxy(request: NextRequest): NextResponse {
 
   const response = NextResponse.next({ request: { headers: requestHeaders } });
   response.headers.set('content-security-policy', csp);
+  refreshSessionCookie(request, response, true);
   return response;
 }
 

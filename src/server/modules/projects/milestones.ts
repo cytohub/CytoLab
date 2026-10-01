@@ -9,6 +9,7 @@ import { authorize } from '../../authz';
 import { db } from '../../db/client';
 import { milestones, projects } from '../../db/schema';
 import { recordEvent } from '../../platform/events';
+import { bumpSequenceTo, nextSequenceValue } from '../../platform/sequences';
 import { isOrgMember } from '../shared/references';
 
 async function loadProjectForMilestone(ctx: AuthContext, projectId: string) {
@@ -38,10 +39,15 @@ export async function createMilestone(ctx: AuthContext, projectId: string, input
   await assertOwnerInOrg(ctx, input.ownerId);
 
   return db().transaction(async (tx) => {
+    // Numbers come from a per-project counter, whose upsert row lock serializes
+    // concurrent creates. Raising it to the current maximum first covers milestones
+    // written without the counter (seed data, imports).
+    const scope = `milestone:${projectId}` as const;
     const [seqRow] = await tx.select({ maxSeq: max(milestones.sequence) }).from(milestones).where(eq(milestones.projectId, projectId));
+    await bumpSequenceTo(tx, ctx.orgId, scope, seqRow?.maxSeq ?? 0);
+    const sequence = await nextSequenceValue(tx, ctx.orgId, scope);
     const [posRow] = await tx.select({ maxPos: max(milestones.position) }).from(milestones).where(and(eq(milestones.projectId, projectId), isNull(milestones.deletedAt)));
     const maxPos = posRow?.maxPos;
-    const sequence = (seqRow?.maxSeq ?? 0) + 1;
     const completed = input.status === 'completed';
     const [row] = await tx
       .insert(milestones)

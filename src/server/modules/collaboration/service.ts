@@ -12,6 +12,7 @@ import { db } from '../../db/client';
 import { comments, entityLinks, entityTags, tags } from '../../db/schema';
 import { getEntityRef, getEntityRefs, type EntityRef } from '../../platform/entities';
 import { recordEvent } from '../../platform/events';
+import { indexExperiments } from '../search/indexers';
 import { initialsOf, type TagSummary, type UserSummary } from '../shared/presenters';
 import { users } from '../../db/schema';
 
@@ -129,7 +130,7 @@ export async function createTag(ctx: AuthContext, input: CreateTagInput): Promis
 /** Replaces the full set of tags on an entity. */
 export async function setEntityTags(ctx: AuthContext, entityId: string, tagIds: string[]): Promise<TagSummary[]> {
   authorize(ctx, 'tag:apply');
-  await getEntityRef(ctx, entityId);
+  const entity = await getEntityRef(ctx, entityId);
   const unique = [...new Set(tagIds)];
   if (unique.length > 0) {
     const valid = await db().select({ id: tags.id }).from(tags).where(and(eq(tags.orgId, ctx.orgId)));
@@ -148,6 +149,7 @@ export async function setEntityTags(ctx: AuthContext, entityId: string, tagIds: 
     const changes = diffFields({ tags: previous.map((t) => t.tagId).sort() }, { tags: [...unique].sort() });
     if (hasChanges(changes)) {
       await recordEvent(tx, ctx, { action: 'tags.updated', entityId, projectId: null, activity: false, audit: { action: 'update', resourceType: 'entity_tags', resourceId: entityId, changes } });
+      if (entity.type === 'experiment') await indexExperiments(tx, ctx.orgId, [entityId]);
     }
   });
 

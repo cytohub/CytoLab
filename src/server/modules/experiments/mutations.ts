@@ -188,10 +188,14 @@ export async function updateExperiment(ctx: AuthContext, experimentId: string, i
     const changes = diffFields(current as unknown as Record<string, unknown>, { ...patch, ...(statusChanging ? { status: nextStatus } : {}) });
     const assignmentChanged = input.researcherId !== undefined && input.researcherId !== current.researcherId;
 
-    await tx
+    // The version predicate makes the check atomic: if another save landed after
+    // this request loaded the experiment, no row matches and the update is refused.
+    const updated = await tx
       .update(experiments)
       .set({ ...patch, version: current.version + 1, lastActivityAt: now, updatedAt: now, updatedBy: ctx.userId })
-      .where(eq(experiments.id, experimentId));
+      .where(and(eq(experiments.id, experimentId), eq(experiments.version, current.version)))
+      .returning({ id: experiments.id });
+    if (updated.length === 0) throw new ConflictError('This experiment was changed by someone else. Reload and try again.');
 
     if (input.name && input.name !== current.name) await syncEntityLabel(tx, experimentId, { title: input.name });
 
@@ -223,7 +227,9 @@ export async function updateExperiment(ctx: AuthContext, experimentId: string, i
       });
     }
 
-    if (input.name || input.projectId) await indexExperiments(tx, ctx.orgId, [experimentId]);
+    // The document embeds most editable fields (objective, results, researcher,
+    // type, protocol ref), so any save refreshes it; it is a one-row upsert.
+    await indexExperiments(tx, ctx.orgId, [experimentId]);
   });
 
   // Read after the transaction commits (getExperimentDetail uses the pool, so a
