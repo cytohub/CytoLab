@@ -10,6 +10,7 @@ import type { ListExperimentsQuery } from '@/domain/schemas/experiments';
 import { routes } from '@/lib/routes';
 import type { AuthContext } from '../../auth/context';
 import { db } from '../../db/client';
+import { escapeLike } from '../../db/sql-utils';
 import { entityTags, experiments, experimentTypes, projects, tags, users } from '../../db/schema';
 import { offset, pageMeta, type Paginated } from '../shared/pagination';
 import { toUserSummary, type TagSummary, type UserSummary } from '../shared/presenters';
@@ -163,7 +164,7 @@ export async function listExperiments(ctx: AuthContext, query: Partial<ListExper
   if (query.completedTo) filters.push(lte(experiments.completedDate, query.completedTo));
   if (query.attention) filters.push(attentionCondition(today, now));
   if (query.q) {
-    const term = `%${query.q}%`;
+    const term = `%${escapeLike(query.q)}%`;
     filters.push(or(ilike(experiments.name, term), ilike(experiments.displayId, term), ilike(experiments.objective, term))!);
   }
   if (query.tagId?.length) {

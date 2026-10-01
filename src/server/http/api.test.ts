@@ -4,7 +4,8 @@ import { ForbiddenError } from '@/domain/errors';
 import { resetEnvCache } from '../env';
 import { z } from 'zod';
 import { PayloadTooLargeError } from '@/domain/errors';
-import { assertSameOrigin, parseJson, readBodyCapped, toAppError, zodFieldErrors } from './api';
+import { NextRequest as Req } from 'next/server';
+import { assertSameOrigin, ok, parseJson, publicApi, readBodyCapped, toAppError, zodFieldErrors } from './api';
 
 // The app behind a TLS-terminating proxy: the server sees an internal address
 // over plain HTTP, while the browser talks to https://cytolab.ai.
@@ -74,8 +75,10 @@ describe('toAppError', () => {
     expect(toAppError(pg('22003'))?.status).toBe(422); // numeric out of range
   });
 
-  it('keeps mapping constraint violations', () => {
-    expect(toAppError(pg('23505'))?.status).toBe(409);
+  it('keeps mapping constraint violations, without naming the constraint', () => {
+    const conflict = toAppError(Object.assign(new Error('Failed query'), { cause: { code: '23505', constraint_name: 'tags_org_name_unique' } }));
+    expect(conflict?.status).toBe(409);
+    expect(JSON.stringify(conflict?.details ?? {})).not.toContain('tags_org_name_unique');
     expect(toAppError(pg('23503'))?.status).toBe(400);
     expect(toAppError(pg('23514'))?.status).toBe(422);
   });
@@ -126,5 +129,32 @@ describe('zodFieldErrors', () => {
   it('lists at most 50 fields however many issues there are', () => {
     const result = z.array(z.string()).safeParse(Array.from({ length: 500 }, () => 1));
     expect(Object.keys(zodFieldErrors(result.error!))).toHaveLength(50);
+  });
+});
+
+describe('response envelope', () => {
+  beforeEach(() => {
+    vi.stubEnv('DATABASE_URL', 'postgres://user:pass@localhost:5432/unit');
+    resetEnvCache();
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    resetEnvCache();
+  });
+
+  const handler = publicApi(async () => ok({ fine: true }));
+  const call = (headers: Record<string, string>) => handler(new Req('http://localhost/api/v1/health', { headers }), { params: Promise.resolve({}) });
+
+  it('keeps a plain correlation ID and replaces anything else', async () => {
+    expect((await call({ 'x-request-id': 'trace-123.abc' })).headers.get('x-request-id')).toBe('trace-123.abc');
+    for (const bad of ['has space', 'x'.repeat(65), '<script>']) {
+      const id = (await call({ 'x-request-id': bad })).headers.get('x-request-id');
+      expect(id).not.toBe(bad);
+      expect(id).toMatch(/^[0-9a-f-]{36}$/);
+    }
+  });
+
+  it('gives API responses a CSP that loads and runs nothing', async () => {
+    expect((await call({})).headers.get('content-security-policy')).toBe("default-src 'none'; frame-ancestors 'none'");
   });
 });

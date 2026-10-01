@@ -9,6 +9,7 @@ import type { CreateCommentInput, CreateLinkInput, CreateTagInput } from '@/doma
 import { actorOf, type AuthContext } from '../../auth/context';
 import { authorize } from '../../authz';
 import { db } from '../../db/client';
+import { isUniqueViolation } from '../../db/sql-utils';
 import { comments, entityLinks, entityTags, experiments, projects, tags } from '../../db/schema';
 import { getEntityRef, getEntityRefs, type EntityRef } from '../../platform/entities';
 import { recordEvent } from '../../platform/events';
@@ -151,7 +152,7 @@ export async function createTag(ctx: AuthContext, input: CreateTagInput): Promis
       return row!;
     })
     .catch((err) => {
-      if (err && typeof err === 'object' && (err as { code?: string }).code === '23505') throw new ValidationError('That tag already exists', { name: ['A tag with this name already exists'] });
+      if (isUniqueViolation(err)) throw new ValidationError('That tag already exists', { name: ['A tag with this name already exists'] });
       throw err;
     });
 }
@@ -244,7 +245,7 @@ export async function createLink(ctx: AuthContext, sourceId: string, input: Crea
       });
       return row!;
     } catch (err) {
-      if (err && typeof err === 'object' && (err as { code?: string }).code === '23505') throw new ValidationError('These objects are already linked', { targetId: ['Link already exists'] });
+      if (isUniqueViolation(err)) throw new ValidationError('These objects are already linked', { targetId: ['Link already exists'] });
       throw err;
     }
   });

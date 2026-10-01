@@ -10,6 +10,7 @@ type CreateExperimentTypeSchema = z.output<typeof createExperimentTypeSchema>;
 type UpdateExperimentTypeSchema = z.output<typeof updateExperimentTypeSchema>;
 import { authorize } from '../../authz';
 import { db } from '../../db/client';
+import { isUniqueViolation } from '../../db/sql-utils';
 import { experiments, experimentTypes, researchAreas } from '../../db/schema';
 import { recordEvent } from '../../platform/events';
 import { indexExperimentsOfType } from '../search/indexers';
@@ -52,7 +53,7 @@ export async function createExperimentType(ctx: AuthContext, input: CreateExperi
       return row!.id;
     })
     .catch((err) => {
-      if (err && typeof err === 'object' && (err as { code?: string }).code === '23505') throw new ValidationError('That experiment type already exists', { name: ['Choose a different name'] });
+      if (isUniqueViolation(err)) throw new ValidationError('That experiment type already exists', { name: ['Choose a different name'] });
       throw err;
     });
   return (await listExperimentTypes(ctx)).find((t) => t.id === typeId)!;
