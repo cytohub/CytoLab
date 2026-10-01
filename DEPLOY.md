@@ -73,20 +73,37 @@ you want to deploy new code.
    fails with `DATABASE_URL is not set`. That is expected; step 3 fixes it.
 3. On the project canvas, click **Create → Database → PostgreSQL**.
 4. Rename the app service to `web` (click it, then **Settings**).
+5. Create the database role the app runs as. Generate a password with
+   `openssl rand -hex 24`, open **Postgres → Data → Query** (or connect with
+   `psql` and the database's public URL), and run:
+
+   ```sql
+   CREATE ROLE cytolab_app LOGIN PASSWORD '<that password>';
+   ```
+
+   The app connects as this role. It can read and write rows but cannot
+   change the schema, rewrite or delete audit-log entries, or drop the
+   triggers that keep the log append-only. Migrations and the nightly reset
+   run as the database owner and grant the role its access afterwards.
 
 ## 3. Configure the `web` service
 
 1. Open **web → Variables → Raw Editor** and paste:
 
    ```sh
-   DATABASE_URL=${{Postgres.DATABASE_URL}}
+   DATABASE_URL=postgresql://cytolab_app:<that password>@${{Postgres.PGHOST}}:${{Postgres.PGPORT}}/${{Postgres.PGDATABASE}}
+   MIGRATION_DATABASE_URL=${{Postgres.DATABASE_URL}}
+   APP_DB_ROLE=cytolab_app
    APP_URL=https://cytolab.ai
    DEMO_MODE=true
    PUBLIC_DEMO=true
    CLIENT_IP_HEADER=x-real-ip
    ```
 
-   Use `CLIENT_IP_HEADER=cf-connecting-ip` instead if you will put Cloudflare's
+   On start, the container applies migrations as the owner
+   (`MIGRATION_DATABASE_URL`), grants `cytolab_app` its access, then serves
+   the app as `cytolab_app` (`DATABASE_URL`). Use
+   `CLIENT_IP_HEADER=cf-connecting-ip` instead if you will put Cloudflare's
    proxy in front (step 7, option A).
 2. In **Settings → Deploy**, set **Healthcheck Path** to `/api/v1/health`.
    Leave the start command empty, because the image already knows how to
@@ -116,9 +133,12 @@ you want to deploy new code.
 
    ```sh
    DATABASE_URL=${{Postgres.DATABASE_URL}}
+   APP_DB_ROLE=cytolab_app
    PUBLIC_DEMO=true
    ```
 
+   The reset runs as the owner because it rebuilds the schema, which also
+   discards the grants; `APP_DB_ROLE` makes it grant `cytolab_app` again.
 3. In **Settings → Deploy**, set **Custom Start Command** to `pnpm db:reset`.
 4. In **Settings → Cron Schedule**, enter `0 4 * * *` (every day at 04:00 UTC;
    Railway cron schedules run in UTC).
@@ -141,12 +161,8 @@ runs it unless it is scheduled.
 1. On the canvas, click **Create → GitHub Repo** and pick the same repository
    and branch again. Rename the new service to `attention`. (On the CLI path,
    use the `attention` service you already created.)
-2. Set its **Variables**:
-
-   ```sh
-   DATABASE_URL=${{Postgres.DATABASE_URL}}
-   ```
-
+2. Set its **Variables** to the same `DATABASE_URL` as `web` (the
+   `cytolab_app` connection); the scan only reads and writes rows.
 3. In **Settings → Deploy**, set **Custom Start Command** to
    `pnpm jobs:attention`.
 4. In **Settings → Cron Schedule**, enter `30 4 * * *` (04:30 UTC, half an hour
@@ -179,6 +195,11 @@ from).
 4. In **SSL/TLS → Overview**, select **Full**. Not "Full (strict)": Railway
    says strict mode does not work, and other modes cause
    `ERR_TOO_MANY_REDIRECTS`.
+   (While Railway issues or renews the site's certificate it briefly serves
+   its default `*.up.railway.app` one, which strict mode rejects.) The
+   trade-off: Cloudflare encrypts its connection to Railway but does not
+   check Railway's certificate, so that hop resists eavesdropping but not
+   someone able to intercept traffic between the two providers.
 5. In **SSL/TLS → Edge Certificates**, turn on **Universal SSL**.
 6. Railway's domain panel should now show "Cloudflare proxy detected".
 7. Under **Bulk Redirects**, create a list with source
@@ -248,12 +269,18 @@ until the new one passes its healthcheck.
 | Attention log: `DATABASE_URL is not set`, or no notifications ever appear | The `attention` service is missing its `DATABASE_URL` variable or its cron schedule. |
 | Reset log: `Refusing to reset the database…` | `PUBLIC_DEMO=true` is missing on `reset`, or the database contains a non-demo organization. The reset will not touch real data. |
 | `ERR_TOO_MANY_REDIRECTS` behind Cloudflare | SSL/TLS mode must be **Full**. |
+| Log: `permission denied for table …` | The app role lost its grants: `APP_DB_ROLE` is missing on `web` or `reset`. Run `pnpm db:grant` with the owner URL to restore them. |
+| Log: `Role "cytolab_app" does not exist` | The role from section 2, step 5 is missing: create it, then redeploy. |
+| Demo accounts are gone from the sign-in page and their sign-in fails | `PUBLIC_DEMO=true` is missing on `web`. In production, demo workspaces open only on a declared public demo. |
 | Custom domain answers 404 | The TXT verification record is missing or wrong. |
 
 ## Before this becomes a real (non-demo) deployment
 
-Remove `DEMO_MODE`, `PUBLIC_DEMO` and the `reset` service first, then address
-the following:
+Use a new database rather than the demo's, and remove `DEMO_MODE`,
+`PUBLIC_DEMO` and the `reset` service. The demo accounts' password is public.
+As a safeguard, production refuses sign-in to demo workspaces, and ends their
+sessions, unless `PUBLIC_DEMO=true`, so seeded accounts left behind cannot be
+used. Then address the following:
 
 - Attachments are stored on the container's local disk, which is ephemeral.
   Real use needs object storage (or a Railway volume mounted at

@@ -21,6 +21,7 @@
     "db:migrate": "tsx --conditions=react-server scripts/db-migrate.ts",
     "db:seed": "tsx --conditions=react-server scripts/db-seed.ts",
     "db:reset": "tsx --conditions=react-server scripts/db-reset.ts",
+    "db:grant": "tsx --conditions=react-server scripts/db-grant.ts",
     "db:studio": "drizzle-kit studio",
     "jobs:attention": "tsx --conditions=react-server scripts/jobs-attention-scan.ts",
     "check": "pnpm typecheck && pnpm lint && pnpm test"

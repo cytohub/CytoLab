@@ -9,7 +9,7 @@ import {
   sessionCookieName as cookieName,
   sessionCookieOptions as cookieOptions,
 } from '@/lib/session-cookie';
-import { env } from '../env';
+import { demoWorkspacesOpen, env } from '../env';
 import { createAuthContext, type AuthContext } from './context';
 
 export { SESSION_TTL_MS };
@@ -89,6 +89,7 @@ export async function resolveSession(token: string, meta: RequestMeta): Promise<
     .limit(1);
 
   if (!row || row.userStatus !== 'active' || row.membershipStatus !== 'active') return null;
+  if (row.isDemo && !demoWorkspacesOpen()) return null;
 
   const teamRows = await db()
     .select({ teamId: teamMemberships.teamId })

@@ -56,7 +56,8 @@ pnpm dev                      # http://localhost:3000
 
 On the sign-in page, pick a demo account (or use any seeded email with the
 password `cytolab-demo`) to explore the different roles — Admin, Lab Manager,
-Scientist, Researcher, Viewer.
+Scientist, Researcher, Viewer. In production mode (`pnpm start`, Docker) the
+demo workspace opens only with `PUBLIC_DEMO=true`.
 
 ## Scripts
 
@@ -71,6 +72,7 @@ Scientist, Researcher, Viewer.
 | `pnpm check` | typecheck + lint + unit tests. |
 | `pnpm db:generate` | Generate a migration from schema changes. |
 | `pnpm db:migrate` · `pnpm db:seed` · `pnpm db:reset` | Database lifecycle. |
+| `pnpm db:grant` | Re-grant the app role (`APP_DB_ROLE`) its row access; migrate and reset do this already. |
 | `pnpm jobs:attention` | Run the "needs attention" notification scan. |
 
 Integration tests use `DATABASE_URL_TEST` (default

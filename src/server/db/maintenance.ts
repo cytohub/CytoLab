@@ -19,6 +19,35 @@ export async function runMigrations(databaseUrl: string): Promise<void> {
   }
 }
 
+const ROLE_NAME_RE = /^[a-z_][a-z0-9_]{0,62}$/;
+
+/**
+ * Gives the role the app runs as exactly what it needs: read and write rows,
+ * never change the schema. The audit log is insert-only for it, and since it
+ * owns no table it cannot drop the append-only trigger either, so neither an
+ * app bug nor injected SQL can rewrite history.
+ *
+ * Run as the schema owner after every migration and reset: a reset recreates
+ * the schema, which discards the grants.
+ */
+export async function grantAppRole(databaseUrl: string, role: string): Promise<void> {
+  if (!ROLE_NAME_RE.test(role)) throw new Error('APP_DB_ROLE must be a lower-case identifier, e.g. cytolab_app');
+  const sql = postgres(databaseUrl, { max: 1, onnotice: () => {} });
+  try {
+    const [exists] = await sql<{ exists: boolean }[]>`SELECT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = ${role}) AS exists`;
+    if (!exists?.exists) throw new Error(`Role "${role}" does not exist; create it first (see DEPLOY.md)`);
+    const quoted = `"${role}"`;
+    await sql.unsafe(`
+      GRANT USAGE ON SCHEMA public TO ${quoted};
+      GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO ${quoted};
+      GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA public TO ${quoted};
+      REVOKE UPDATE, DELETE, TRUNCATE ON audit_log FROM ${quoted};
+    `);
+  } finally {
+    await sql.end({ timeout: 5 });
+  }
+}
+
 /** Organizations not flagged as demo workspaces (0 for a database with no schema yet). */
 export async function countNonDemoOrganizations(databaseUrl: string): Promise<number> {
   const sql = postgres(databaseUrl, { max: 1, onnotice: () => {} });
