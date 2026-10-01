@@ -36,7 +36,9 @@ export async function login(input: LoginInput, meta: RequestMeta): Promise<Login
     .from(users)
     .innerJoin(orgMemberships, eq(orgMemberships.userId, users.id))
     .innerJoin(organizations, eq(organizations.id, orgMemberships.orgId))
-    .where(eq(users.email, input.email))
+    // The oldest *active* membership: a suspended or pending one elsewhere
+    // must not lock the person out of the organization they work in.
+    .where(and(eq(users.email, input.email), eq(orgMemberships.status, 'active')))
     .orderBy(asc(orgMemberships.createdAt))
     .limit(1);
 
