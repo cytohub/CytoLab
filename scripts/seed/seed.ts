@@ -6,6 +6,7 @@ import { closeDb, db, type Transaction } from '../../src/server/db/client';
 import * as s from '../../src/server/db/schema';
 import { hashPassword } from '../../src/server/auth/password';
 import { reindexOrganization } from '../../src/server/modules/search/indexers';
+import { bumpSequenceTo } from '../../src/server/platform/sequences';
 import { uuidv7 } from '../../src/server/db/uuid';
 import {
   DEMO_PASSWORD,
@@ -299,6 +300,13 @@ async function buildWorkspace(tx: Transaction) {
   // --- Notifications (recent, some unread) -------------------------------
   buildNotifications(orgId, usersByKey, teamMembers, notifications);
   await chunkedInsert(tx, s.notifications, notifications);
+
+  // --- Human-ID counters ---------------------------------------------------
+  // New experiments and samples continue after the seeded numbers. Without
+  // these rows the first one created after a reset reuses EXP-1001 / SMP-00001,
+  // fails on the unique display ID, and rolls the counter back every time.
+  await bumpSequenceTo(tx, orgId, 'experiment', experimentSeq);
+  await bumpSequenceTo(tx, orgId, 'sample', sampleSeq);
 
   // --- Search index -------------------------------------------------------
   await reindexOrganization(tx, orgId);
