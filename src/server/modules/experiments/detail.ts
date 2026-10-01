@@ -11,7 +11,7 @@ import {
   PRIORITY_META,
   SAMPLE_STATUS_META,
 } from '@/domain/labels';
-import { canEditExperiment } from '@/domain/permissions';
+import { canEditExperiment, canModifyExperimentEntry } from '@/domain/permissions';
 import { EXPERIMENT_TRANSITIONS } from '@/domain/workflows';
 import { routes } from '@/lib/routes';
 import { actorOf, type AuthContext } from '../../auth/context';
@@ -69,6 +69,8 @@ export interface ObservationView {
   significance: { value: string; label: string; tone: string };
   observedAt: string;
   author: UserSummary | null;
+  /** The author, or a lab manager/admin, on an experiment the viewer can edit. */
+  canModify: boolean;
 }
 export interface ResultView {
   id: string;
@@ -81,6 +83,7 @@ export interface ResultView {
   sample: { id: string; displayId: string; name: string } | null;
   recordedAt: string;
   recordedBy: UserSummary | null;
+  canModify: boolean;
 }
 export interface LinkedSampleView {
   id: string;
@@ -237,7 +240,8 @@ export async function getExperimentDetail(ctx: AuthContext, experimentId: string
   const priorityMeta = PRIORITY_META[row.priority];
   const stepsCompleted = stepRows.filter((s) => s.step.completedAt !== null).length;
 
-  const canEdit = canEditExperiment(actorOf(ctx), { researcherId: row.researcherId, createdBy: row.createdById, teamId: row.teamId });
+  const actor = actorOf(ctx);
+  const canEdit = canEditExperiment(actor, { researcherId: row.researcherId, createdBy: row.createdById, teamId: row.teamId });
 
   return {
     id: row.id,
@@ -279,6 +283,7 @@ export async function getExperimentDetail(ctx: AuthContext, experimentId: string
       significance: { value: o.obs.significance, label: OBSERVATION_SIGNIFICANCE_META[o.obs.significance].label, tone: OBSERVATION_SIGNIFICANCE_META[o.obs.significance].tone },
       observedAt: o.obs.observedAt.toISOString(),
       author: user({ id: o.aId, name: o.aName, title: o.aTitle, email: o.aEmail, color: o.aColor, avatar: o.aAvatar }),
+      canModify: canEdit && canModifyExperimentEntry(actor, o.obs.authorId),
     })),
     results: resultRows.map((r) => ({
       id: r.res.id,
@@ -291,6 +296,7 @@ export async function getExperimentDetail(ctx: AuthContext, experimentId: string
       sample: r.sId ? { id: r.sId, displayId: r.sDisplay!, name: r.sName! } : null,
       recordedAt: r.res.recordedAt.toISOString(),
       recordedBy: user({ id: r.rbId, name: r.rbName, title: r.rbTitle, email: r.rbEmail, color: r.rbColor, avatar: r.rbAvatar }),
+      canModify: canEdit && canModifyExperimentEntry(actor, r.res.recordedBy),
     })),
     samples: sampleRows.map((s) => ({
       id: s.s.id,

@@ -150,7 +150,7 @@ export function ObservationLog({ displayId, observations, canEdit }: { displayId
                   </div>
                   <p className="mt-1.5 whitespace-pre-wrap text-sm leading-relaxed text-fg-muted">{o.body}</p>
                 </div>
-                {canEdit && (
+                {o.canModify && (
                   <button onClick={() => remove(o.id)} disabled={busy === o.id} className="rounded-md p-1 text-fg-subtle hover:bg-[var(--tone-red-bg)] hover:text-[var(--tone-red-fg)]" aria-label="Delete observation">
                     <Trash2 className="size-4" />
                   </button>
@@ -223,7 +223,7 @@ export function ResultsManager({ displayId, results, canEdit }: { displayId: str
                   <div className="mt-1 text-xl font-semibold tabular-nums text-fg">{formatMeasurement(r.valueNumeric, r.unit, r.valueText)}</div>
                   {r.sample && <div className="mt-0.5 text-xs text-fg-faint">from {r.sample.displayId}</div>}
                 </div>
-                {canEdit && (
+                {r.canModify && (
                   <button onClick={() => remove(r.id)} disabled={busy === r.id} className="rounded-md p-1 text-fg-subtle hover:bg-[var(--tone-red-bg)] hover:text-[var(--tone-red-fg)]" aria-label="Delete result">
                     <Trash2 className="size-4" />
                   </button>

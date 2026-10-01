@@ -163,6 +163,16 @@ export function canDeleteAttachment(actor: Actor, uploadedBy: string | null): bo
 }
 
 /**
+ * Observations and results stay attributable to the person who recorded them:
+ * only the author, or a lab manager or admin correcting the record, changes
+ * one. Callers also require edit rights on the experiment itself.
+ */
+export function canModifyExperimentEntry(actor: Actor, authorId: string | null): boolean {
+  if (!roleHasPermission(actor.role, 'experiment:update')) return false;
+  return ORG_WIDE_EDITORS.has(actor.role) || (authorId !== null && authorId === actor.userId);
+}
+
+/**
  * Authors change their own content while their role still allows writing it;
  * moderators change anyone's. A member demoted to viewer loses the author path.
  */

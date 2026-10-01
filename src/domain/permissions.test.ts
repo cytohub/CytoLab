@@ -3,6 +3,7 @@ import {
   canDeleteAttachment,
   canDeleteProject,
   canModifyAuthoredContent,
+  canModifyExperimentEntry,
   canReassignExperiment,
   canReassignProject,
   canEditExperiment,
@@ -119,5 +120,22 @@ describe('authored content', () => {
     expect(canModifyAuthoredContent(actor({ role: 'researcher', userId: 'u1' }), 'u1', 'comment:create', 'comment:moderate')).toBe(true);
     expect(canModifyAuthoredContent(actor({ role: 'viewer', userId: 'u1' }), 'u1', 'comment:create', 'comment:moderate')).toBe(false);
     expect(canModifyAuthoredContent(actor({ role: 'lab_manager', userId: 'u2' }), 'u1', 'comment:create', 'comment:moderate')).toBe(true);
+  });
+});
+
+describe('experiment entries', () => {
+  it('lets the author or a lab manager or admin change an observation or result', () => {
+    expect(canModifyExperimentEntry(actor({ role: 'researcher', userId: 'u1' }), 'u1')).toBe(true);
+    expect(canModifyExperimentEntry(actor({ role: 'scientist', userId: 'u2', teamIds: ['teamA'] }), 'u1')).toBe(false);
+    expect(canModifyExperimentEntry(actor({ role: 'lab_manager', userId: 'u2' }), 'u1')).toBe(true);
+    expect(canModifyExperimentEntry(actor({ role: 'admin', userId: 'u2' }), null)).toBe(true);
+  });
+
+  it('leaves entries with no recorded author to lab managers and admins', () => {
+    expect(canModifyExperimentEntry(actor({ role: 'researcher', userId: 'u1' }), null)).toBe(false);
+  });
+
+  it('drops the author path once the role can no longer write', () => {
+    expect(canModifyExperimentEntry(actor({ role: 'viewer', userId: 'u1' }), 'u1')).toBe(false);
   });
 });
