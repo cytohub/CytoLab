@@ -6,6 +6,7 @@ import {
   BadRequestError,
   ConflictError,
   ForbiddenError,
+  NotFoundError,
   PayloadTooLargeError,
   UnauthorizedError,
   UnsupportedMediaTypeError,
@@ -179,6 +180,9 @@ export function toAppError(err: unknown): AppError | null {
   }
   if (pg?.code === '23503') return new BadRequestError('A referenced record does not exist');
   if (pg?.code === '23514') return new ValidationError('A value violates a data rule');
+  // Bodies and query strings are validated, so a malformed value reaching
+  // Postgres comes from a path segment such as /milestones/not-a-uuid.
+  if (pg?.code === '22P02') return new NotFoundError('Resource');
   return null;
 }
 

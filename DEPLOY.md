@@ -5,20 +5,22 @@ This guide puts CytoLab on `https://cytolab.ai` as a **public demo**:
 - anyone can open the site and sign in with one click to the synthetic workspace;
 - file uploads and account changes are switched off;
 - each visitor can make at most 100 changes per 10 minutes;
-- every night the database is rebuilt from the seed, which wipes all changes.
+- every night the database is rebuilt from the seed, which wipes all changes;
+- every morning a scan notifies researchers about experiments that need attention.
 
 All data in the demo is synthetic. The sign-in page and the in-app banner say
 so, and the demo must never be presented as real scientific findings.
 
 ## How it fits together
 
-One Railway project with three services:
+One Railway project with four services:
 
 | Service    | What it is | What it runs |
 | ---------- | ---------- | ------------ |
 | `Postgres` | Railway's managed PostgreSQL | — |
 | `web`      | This repository, built from the `Dockerfile` | `scripts/docker/start.sh`: applies migrations, seeds the demo workspace if it is missing, then starts the server |
 | `reset`    | The same repository and image | `pnpm db:reset` on a nightly schedule, then exits |
+| `attention` | The same repository and image | `pnpm jobs:attention` every morning, then exits |
 
 Settings live in the Railway dashboard, not in a `railway.json` file.
 Railway has deprecated that file format ("Config as Code"), and it stops
@@ -54,10 +56,11 @@ example a README created with it), push to a new branch instead with
 
 **CLI (no GitHub).** Install it with `npm i -g @railway/cli`, then run
 `railway login`. In step 2, start with **New Project → Empty Project**, add
-PostgreSQL, and create two **Empty Service**s named `web` and `reset`. Then,
-in the code folder, run `railway link` to pick the project, followed by
-`railway up --service web` and `railway up --service reset`. Run both
-`railway up` commands again whenever you want to deploy new code.
+PostgreSQL, and create three **Empty Service**s named `web`, `reset` and
+`attention`. Then, in the code folder, run `railway link` to pick the project,
+followed by `railway up --service web`, `railway up --service reset` and
+`railway up --service attention`. Run the `railway up` commands again whenever
+you want to deploy new code.
 
 ## 2. Create the project and database
 
@@ -83,7 +86,7 @@ in the code folder, run `railway link` to pick the project, followed by
    ```
 
    Use `CLIENT_IP_HEADER=cf-connecting-ip` instead if you will put Cloudflare's
-   proxy in front (step 6, option A).
+   proxy in front (step 7, option A).
 2. In **Settings → Deploy**, set **Healthcheck Path** to `/api/v1/health`.
    Leave the start command empty, because the image already knows how to
    start.
@@ -127,7 +130,33 @@ the reset takes may fail. The script refuses to run unless `PUBLIC_DEMO=true`
 and every organization in the database is a demo workspace, so pointing it at
 a real database by mistake does nothing.
 
-## 6. Point cytolab.ai at Railway
+## 6. Schedule the attention scan
+
+The scan finds experiments that are blocked, overdue, not started, stale or
+recently failed (the rules behind the dashboard's "needs attention" list) and
+notifies each one's researcher, at most once per experiment per day. Nothing
+runs it unless it is scheduled.
+
+1. On the canvas, click **Create → GitHub Repo** and pick the same repository
+   and branch again. Rename the new service to `attention`. (On the CLI path,
+   use the `attention` service you already created.)
+2. Set its **Variables**:
+
+   ```sh
+   DATABASE_URL=${{Postgres.DATABASE_URL}}
+   ```
+
+3. In **Settings → Deploy**, set **Custom Start Command** to
+   `pnpm jobs:attention`.
+4. In **Settings → Cron Schedule**, enter `30 4 * * *` (04:30 UTC, half an hour
+   after the reset, so each freshly seeded demo day starts with its alerts).
+5. Give it no domain and no healthcheck, then **Deploy**.
+
+The scan only reads experiments and writes notifications, so it is safe on any
+deployment, demo or not. Keep this service when the demo becomes a real
+deployment.
+
+## 7. Point cytolab.ai at Railway
 
 In **web → Settings → Networking**, click **+ Custom Domain** and enter
 `cytolab.ai`. Railway shows two records to create at your DNS provider: a
@@ -184,7 +213,7 @@ Railway issues a Let's Encrypt certificate automatically, usually within an
 hour of the records being correct. Until then the browser may warn about the
 certificate.
 
-## 7. Final checks
+## 8. Final checks
 
 - `https://cytolab.ai` shows the sign-in page, and `https://www.cytolab.ai`
   redirects to it.
@@ -195,10 +224,12 @@ certificate.
   file uploads say they are turned off.
 - The next morning, the change you made is gone, which confirms the reset ran.
   Its log shows `✔ Seeded demo workspace`.
+- The `attention` service's log shows `✔ Attention scan: … notifications`, and
+  a researcher account has new "needs attention" notifications.
 
 ## Updating the demo
 
-With the GitHub setup, every push to the watched branch rebuilds both services.
+With the GitHub setup, every push to the watched branch rebuilds all three services.
 `web` applies new migrations as it starts, and the old version keeps serving
 until the new one passes its healthcheck.
 
@@ -208,6 +239,7 @@ until the new one passes its healthcheck.
 | ------- | ------------ |
 | Deploy log: `DATABASE_URL is not set` | The variable is missing on that service, or the reference name doesn't match the database service (`${{Postgres.DATABASE_URL}}` assumes it is called `Postgres`). |
 | Many visitors get "You are making changes faster than the public demo allows" at once | `CLIENT_IP_HEADER` doesn't match your setup, so everyone appears to share one address. Use `cf-connecting-ip` behind Cloudflare's proxy, otherwise `x-real-ip`. |
+| Attention log: `DATABASE_URL is not set`, or no notifications ever appear | The `attention` service is missing its `DATABASE_URL` variable or its cron schedule. |
 | Reset log: `Refusing to reset the database…` | `PUBLIC_DEMO=true` is missing on `reset`, or the database contains a non-demo organization. The reset will not touch real data. |
 | `ERR_TOO_MANY_REDIRECTS` behind Cloudflare | SSL/TLS mode must be **Full**. |
 | Custom domain answers 404 | The TXT verification record is missing or wrong. |

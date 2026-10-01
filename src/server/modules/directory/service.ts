@@ -12,7 +12,7 @@ import { db } from '../../db/client';
 import { orgMemberships, teamMemberships, teams, users } from '../../db/schema';
 import { hashPassword } from '../../auth/password';
 import { recordEvent } from '../../platform/events';
-import { indexUsers } from '../search/indexers';
+import { indexDocumentsMentioningTeam, indexDocumentsMentioningUser, indexUsers } from '../search/indexers';
 import { initialsOf, type UserSummary } from '../shared/presenters';
 
 export interface MemberView extends UserSummary {
@@ -130,6 +130,7 @@ export async function updateMember(ctx: AuthContext, userId: string, input: Upda
       await recordEvent(tx, ctx, { action: 'member.updated', entityId: null, projectId: null, activity: false, audit: { action: 'update', resourceType: 'org_membership', resourceId: userId, changes } });
     }
     await indexUsers(tx, ctx.orgId, [userId]);
+    if (changes.name || changes.title) await indexDocumentsMentioningUser(tx, userId);
   });
 
   return getMember(ctx, userId);
@@ -147,7 +148,7 @@ export async function updateProfile(ctx: AuthContext, input: UpdateProfileInput)
     if (hasChanges(changes)) {
       await recordEvent(tx, ctx, { action: 'profile.updated', entityId: null, projectId: null, activity: false, audit: { action: 'update', resourceType: 'user', resourceId: ctx.userId, changes } });
     }
-    if (input.name !== undefined) await indexUsers(tx, ctx.orgId, [ctx.userId]);
+    if (changes.name || changes.title) await indexDocumentsMentioningUser(tx, ctx.userId);
   });
 }
 
@@ -218,6 +219,7 @@ export async function updateTeam(ctx: AuthContext, teamId: string, input: Update
     if (hasChanges(changes)) {
       await recordEvent(tx, ctx, { action: 'team.updated', entityId: null, projectId: null, activity: false, audit: { action: 'update', resourceType: 'team', resourceId: teamId, changes } });
     }
+    if (changes.name) await indexDocumentsMentioningTeam(tx, ctx.orgId, teamId);
   });
   return getTeam(ctx, teamId);
 }

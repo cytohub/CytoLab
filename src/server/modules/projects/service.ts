@@ -7,6 +7,7 @@ import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '@
 import { EXPERIMENT_STATUS_META, PRIORITY_META, PROJECT_STATUS_META } from '@/domain/labels';
 import { canDeleteProject, canEditProject } from '@/domain/permissions';
 import type { HealthStatus, ProjectHealth, ProjectProgress } from '@/domain/project-metrics';
+import { isUuid } from '@/domain/identifiers';
 import { HEALTH_META } from '@/domain/project-metrics';
 import type { CreateProjectData, ListProjectsQuery, UpdateProjectData } from '@/domain/schemas/projects';
 import { canTransitionProject, projectTransitionEffects } from '@/domain/workflows';
@@ -156,7 +157,7 @@ export async function listProjects(ctx: AuthContext, query: Partial<ListProjects
 }
 
 async function loadProjectRow(ctx: AuthContext, ref: string): Promise<ProjectRow> {
-  const byCode = !/^[0-9a-f]{8}-/i.test(ref);
+  const byCode = !isUuid(ref);
   const condition = byCode ? eq(projects.code, ref.toUpperCase()) : eq(projects.id, ref);
   const [row] = await baseSelect()
     .where(and(eq(projects.orgId, ctx.orgId), isNull(projects.deletedAt), condition))
@@ -352,14 +353,19 @@ export async function updateProject(ctx: AuthContext, ref: string, input: Update
   await db().transaction(async (tx) => {
     const now = new Date();
     const statusEffects = patch.status && patch.status !== current.status ? projectTransitionEffects(patch.status, now) : {};
+    // The version predicate makes the check atomic: if another save landed after
+    // this request loaded the project, no row matches and the update is refused.
+    let updated: Array<{ id: string }>;
     try {
-      await tx
+      updated = await tx
         .update(projects)
         .set({ ...patch, ...statusEffects, version: current.version + 1, updatedBy: ctx.userId, updatedAt: now })
-        .where(eq(projects.id, current.id));
+        .where(and(eq(projects.id, current.id), eq(projects.version, current.version)))
+        .returning({ id: projects.id });
     } catch (err) {
       throw translateProjectConflict(err);
     }
+    if (updated.length === 0) throw new ConflictError('This project was changed by someone else. Reload and try again.');
     if (patch.code || patch.name) await syncEntityLabel(tx, current.id, { displayId: patch.code, title: patch.name });
 
     if (patch.status && patch.status !== current.status) {

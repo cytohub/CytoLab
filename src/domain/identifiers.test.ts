@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatExperimentId, formatSampleId, isValidProjectCode, parseDisplayId, suggestProjectCode } from './identifiers';
+import { formatExperimentId, formatSampleId, isUuid, isValidProjectCode, parseDisplayId, suggestProjectCode } from './identifiers';
 import { diffFields, hasChanges } from './diff';
 
 describe('display identifiers', () => {
@@ -19,6 +19,15 @@ describe('display identifiers', () => {
   it('suggests codes from project names', () => {
     expect(suggestProjectCode('CAR-T Cell Engineering')).toMatch(/^[A-Z0-9-]+$/);
     expect(suggestProjectCode('mRNA Delivery Platform')).toContain('MRNA');
+  });
+
+  it('tells UUIDs apart from codes that start like one', () => {
+    expect(isUuid('01a0f303-3b78-7ac5-90eb-541fd33eff3f')).toBe(true);
+    expect(isUuid('01A0F303-3B78-7AC5-90EB-541FD33EFF3F')).toBe(true);
+    expect(isValidProjectCode('20250101-A')).toBe(true);
+    expect(isUuid('20250101-A')).toBe(false);
+    expect(isUuid('DEADBEEF-CAFE')).toBe(false);
+    expect(isUuid('EXP-1024')).toBe(false);
   });
 
   it('parses generated display IDs from free text', () => {
