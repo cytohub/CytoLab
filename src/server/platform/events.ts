@@ -1,4 +1,5 @@
 import 'server-only';
+import { and, eq, isNull } from 'drizzle-orm';
 import type { FieldChanges } from '@/domain/diff';
 import type { NotificationType } from '@/domain/enums';
 import type { AuthContext } from '../auth/context';
@@ -14,6 +15,13 @@ export interface NotificationSpec {
   body?: string | null;
   dedupeKey?: string;
 }
+
+/**
+ * Notification types where only the latest news matters: a new one for a record
+ * the recipient has an unread one about replaces it, so reassigning back and
+ * forth or flipping a status does not pile up a notification each time.
+ */
+const MERGED_TYPES: ReadonlySet<NotificationType> = new Set(['assignment', 'status_change']);
 
 export interface EventSpec {
   /** Namespaced verb shown in the activity feed, e.g. `experiment.status_changed`. */
@@ -73,11 +81,34 @@ export async function recordEvent(tx: Executor, ctx: AuthContext, spec: EventSpe
   }
 
   const recipients = dedupeRecipients(spec.notify ?? [], ctx.userId);
-  if (recipients.length > 0) {
+  const merged = new Set<NotificationSpec>();
+  const entityId = spec.entityId ?? null;
+  if (entityId) {
+    for (const n of recipients) {
+      if (!MERGED_TYPES.has(n.type) || n.dedupeKey) continue;
+      const updated = await tx
+        .update(notifications)
+        .set({ title: n.title, body: n.body ?? null, actorId: ctx.userId, activityEventId: activityId, createdAt: new Date() })
+        .where(
+          and(
+            eq(notifications.orgId, ctx.orgId),
+            eq(notifications.recipientId, n.recipientId),
+            eq(notifications.type, n.type),
+            eq(notifications.entityId, entityId),
+            isNull(notifications.readAt),
+          ),
+        )
+        .returning({ id: notifications.id });
+      if (updated.length > 0) merged.add(n);
+    }
+  }
+
+  const fresh = recipients.filter((n) => !merged.has(n));
+  if (fresh.length > 0) {
     await tx
       .insert(notifications)
       .values(
-        recipients.map((n) => ({
+        fresh.map((n) => ({
           orgId: ctx.orgId,
           recipientId: n.recipientId,
           type: n.type,

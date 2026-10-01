@@ -1,7 +1,7 @@
 import 'server-only';
 import { and, eq, isNull, max } from 'drizzle-orm';
 import { diffFields, hasChanges, removedFields, type FieldChanges } from '@/domain/diff';
-import { NotFoundError, ValidationError } from '@/domain/errors';
+import { ForbiddenError, NotFoundError, ValidationError } from '@/domain/errors';
 import { formatSampleId } from '@/domain/identifiers';
 import type {
   ConditionInput,
@@ -11,7 +11,8 @@ import type {
   ResultInput,
   StepInput,
 } from '@/domain/schemas/experiments';
-import type { AuthContext } from '../../auth/context';
+import { canModifyExperimentEntry } from '@/domain/permissions';
+import { actorOf, type AuthContext } from '../../auth/context';
 import { db, type Transaction } from '../../db/client';
 import {
   experimentConditions,
@@ -52,6 +53,13 @@ async function withEditable<T>(ctx: AuthContext, experimentId: string, fn: (tx: 
 }
 
 type EditableExperiment = Awaited<ReturnType<typeof loadEditableExperiment>>;
+
+/** Observations and results change only at the hands of their author or a lab manager/admin. */
+function assertCanModifyEntry(ctx: AuthContext, authorId: string | null, noun: 'observations' | 'results') {
+  if (!canModifyExperimentEntry(actorOf(ctx), authorId)) {
+    throw new ForbiddenError(`You can only change ${noun} you recorded`);
+  }
+}
 
 /** Audit-only entry for a sub-record change (the feed carries new observations and results). */
 function auditItem(
@@ -214,8 +222,10 @@ export function addObservation(ctx: AuthContext, experimentId: string, input: Ob
 export function updateObservation(ctx: AuthContext, experimentId: string, itemId: string, input: Partial<ObservationInput>) {
   return withEditable(ctx, experimentId, async (tx, exp) => {
     const where = and(eq(experimentObservations.id, itemId), eq(experimentObservations.experimentId, experimentId), isNull(experimentObservations.deletedAt));
-    const [before] = await tx.select({ body: experimentObservations.body, significance: experimentObservations.significance, observedAt: experimentObservations.observedAt }).from(experimentObservations).where(where).limit(1);
-    if (!before) throw new NotFoundError('Observation');
+    const [row] = await tx.select({ authorId: experimentObservations.authorId, body: experimentObservations.body, significance: experimentObservations.significance, observedAt: experimentObservations.observedAt }).from(experimentObservations).where(where).limit(1);
+    if (!row) throw new NotFoundError('Observation');
+    assertCanModifyEntry(ctx, row.authorId, 'observations');
+    const { authorId: _author, ...before } = row;
     const patch: Record<string, unknown> = { body: input.body, significance: input.significance };
     if (input.observedAt) patch.observedAt = new Date(input.observedAt);
     for (const key of Object.keys(patch)) if (patch[key] === undefined) delete patch[key];
@@ -228,8 +238,12 @@ export function updateObservation(ctx: AuthContext, experimentId: string, itemId
 
 export function deleteObservation(ctx: AuthContext, experimentId: string, itemId: string) {
   return withEditable(ctx, experimentId, async (tx, exp) => {
-    const rows = await tx.update(experimentObservations).set({ deletedAt: new Date() }).where(and(eq(experimentObservations.id, itemId), eq(experimentObservations.experimentId, experimentId), isNull(experimentObservations.deletedAt))).returning({ id: experimentObservations.id });
-    if (rows.length === 0) throw new NotFoundError('Observation');
+    const where = and(eq(experimentObservations.id, itemId), eq(experimentObservations.experimentId, experimentId), isNull(experimentObservations.deletedAt));
+    const [row] = await tx.select({ authorId: experimentObservations.authorId }).from(experimentObservations).where(where).limit(1);
+    if (!row) throw new NotFoundError('Observation');
+    assertCanModifyEntry(ctx, row.authorId, 'observations');
+    const rows = await tx.update(experimentObservations).set({ deletedAt: new Date() }).where(where).returning({ id: experimentObservations.id });
+    if (rows.length === 0) throw new NotFoundError('Observation'); // deleted meanwhile
     await auditItem(tx, ctx, exp, 'observation.deleted', { action: 'delete', resourceType: 'experiment_observation', resourceId: itemId, changes: null });
   });
 }
@@ -263,12 +277,14 @@ export function updateResult(ctx: AuthContext, experimentId: string, itemId: str
   return withEditable(ctx, experimentId, async (tx, exp) => {
     if (input.sampleId) await assertSampleInOrg(tx, ctx, input.sampleId);
     const where = and(eq(experimentResults.id, itemId), eq(experimentResults.experimentId, experimentId), isNull(experimentResults.deletedAt));
-    const [before] = await tx
-      .select({ name: experimentResults.name, valueNumeric: experimentResults.valueNumeric, valueText: experimentResults.valueText, unit: experimentResults.unit, sampleId: experimentResults.sampleId, isKey: experimentResults.isKey, notes: experimentResults.notes })
+    const [row] = await tx
+      .select({ recordedBy: experimentResults.recordedBy, name: experimentResults.name, valueNumeric: experimentResults.valueNumeric, valueText: experimentResults.valueText, unit: experimentResults.unit, sampleId: experimentResults.sampleId, isKey: experimentResults.isKey, notes: experimentResults.notes })
       .from(experimentResults)
       .where(where)
       .limit(1);
-    if (!before) throw new NotFoundError('Result');
+    if (!row) throw new NotFoundError('Result');
+    assertCanModifyEntry(ctx, row.recordedBy, 'results');
+    const { recordedBy: _author, ...before } = row;
     const patch: Record<string, unknown> = { ...input };
     for (const key of Object.keys(patch)) if (patch[key] === undefined) delete patch[key];
     await tx.update(experimentResults).set({ ...patch, updatedAt: new Date() }).where(where);
@@ -280,8 +296,12 @@ export function updateResult(ctx: AuthContext, experimentId: string, itemId: str
 
 export function deleteResult(ctx: AuthContext, experimentId: string, itemId: string) {
   return withEditable(ctx, experimentId, async (tx, exp) => {
-    const rows = await tx.update(experimentResults).set({ deletedAt: new Date() }).where(and(eq(experimentResults.id, itemId), eq(experimentResults.experimentId, experimentId), isNull(experimentResults.deletedAt))).returning({ id: experimentResults.id });
-    if (rows.length === 0) throw new NotFoundError('Result');
+    const where = and(eq(experimentResults.id, itemId), eq(experimentResults.experimentId, experimentId), isNull(experimentResults.deletedAt));
+    const [row] = await tx.select({ recordedBy: experimentResults.recordedBy }).from(experimentResults).where(where).limit(1);
+    if (!row) throw new NotFoundError('Result');
+    assertCanModifyEntry(ctx, row.recordedBy, 'results');
+    const rows = await tx.update(experimentResults).set({ deletedAt: new Date() }).where(where).returning({ id: experimentResults.id });
+    if (rows.length === 0) throw new NotFoundError('Result'); // deleted meanwhile
     await auditItem(tx, ctx, exp, 'result.deleted', { action: 'delete', resourceType: 'experiment_result', resourceId: itemId, changes: null });
   });
 }
