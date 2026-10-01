@@ -7,7 +7,8 @@ import { organizations, orgMemberships, users } from '../../db/schema';
 import { timingSafeDummyHash, verifyPassword } from '../../auth/password';
 import { createSession, revokeSession, type RequestMeta } from '../../auth/sessions';
 import { recordSystemAudit } from '../../platform/events';
-import { loginLimiter } from '../../http/rate-limit';
+import { ipBucket } from '../../http/client-ip';
+import { loginAccountLimiter, loginAddressLimiter, loginLimiter } from '../../http/rate-limit';
 import { env } from '../../env';
 import { toUserSummary, type UserSummary } from '../shared/presenters';
 
@@ -23,7 +24,11 @@ export interface LoginResult {
  * not the account exists (dummy hash) and is rate-limited per IP + email.
  */
 export async function login(input: LoginInput, meta: RequestMeta): Promise<LoginResult> {
-  loginLimiter.consume(`${meta.ip ?? 'unknown'}:${input.email}`);
+  const address = ipBucket(meta.ip);
+  const pairKey = `${address}:${input.email}`;
+  loginAddressLimiter.consume(address);
+  loginAccountLimiter.consume(input.email);
+  loginLimiter.consume(pairKey);
 
   const [account] = await db()
     .select({
@@ -74,7 +79,8 @@ export async function login(input: LoginInput, meta: RequestMeta): Promise<Login
       metadata: { outcome: 'success', ip: meta.ip, userAgent: meta.userAgent },
     }),
   );
-  loginLimiter.reset(`${meta.ip ?? 'unknown'}:${input.email}`);
+  loginLimiter.reset(pairKey);
+  loginAccountLimiter.reset(input.email);
 
   return { token: session.token, expiresAt: session.expiresAt, userId: account.userId, orgId: account.orgId };
 }

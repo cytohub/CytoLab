@@ -1,23 +1,45 @@
 import 'server-only';
+import { createHash, timingSafeEqual } from 'node:crypto';
 import { cookies, headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import type { NextRequest } from 'next/server';
 import { cache } from 'react';
 import { env } from '../env';
+import { normalizeIp } from '../http/client-ip';
+import { logger } from '../lib/logger';
 import type { AuthContext } from './context';
 import { resolveSession, sessionCookieName, type RequestMeta } from './sessions';
 
+export const CLIENT_IP_SECRET_HEADER = 'x-client-ip-secret';
+
+function sameSecret(provided: string, expected: string): boolean {
+  const digest = (value: string) => createHash('sha256').update(value).digest();
+  return timingSafeEqual(digest(provided), digest(expected));
+}
+
+let warnedUntrusted = false;
+
 /**
- * The client's address as reported by the reverse proxy. Behind a proxy that
- * overwrites a known header, name it in CLIENT_IP_HEADER so a client cannot
- * pick its own address (rate limits and audit entries key on it). Otherwise the
- * first X-Forwarded-For hop is used, which is only as honest as the proxy.
+ * The client's address, which rate limits and audit entries key on.
+ *
+ * CLIENT_IP_HEADER names the header the reverse proxy overwrites (x-real-ip on
+ * Railway, cf-connecting-ip behind Cloudflare). With CLIENT_IP_SECRET set, that
+ * header is believed only when the CDN also sent the shared secret, so a
+ * request sent straight to the origin cannot pick its own address.
+ *
+ * Without a trusted header, the last X-Forwarded-For hop is used: the nearest
+ * proxy appends it, while earlier hops are whatever the client sent.
  */
 export function clientIp(h: Headers): string | null {
-  const trusted = env().CLIENT_IP_HEADER;
-  const raw = trusted ? h.get(trusted) : (h.get('x-forwarded-for') ?? h.get('x-real-ip'));
-  // An address is at most 45 characters; the cap bounds what reaches logs and limiter keys.
-  return raw?.split(',')[0]!.trim().slice(0, 64) || null;
+  const { CLIENT_IP_HEADER, CLIENT_IP_SECRET, NODE_ENV } = env();
+  if (CLIENT_IP_HEADER) {
+    const vouched = !CLIENT_IP_SECRET || sameSecret(h.get(CLIENT_IP_SECRET_HEADER) ?? '', CLIENT_IP_SECRET);
+    if (vouched) return normalizeIp(h.get(CLIENT_IP_HEADER)?.split(',')[0]);
+  } else if (NODE_ENV === 'production' && !warnedUntrusted) {
+    warnedUntrusted = true;
+    logger.warn('CLIENT_IP_HEADER is not set; client addresses come from X-Forwarded-For and may be spoofed');
+  }
+  return normalizeIp(h.get('x-forwarded-for')?.split(',').at(-1) ?? h.get('x-real-ip'));
 }
 
 export function requestMeta(h: Headers, requestId: string): RequestMeta {
