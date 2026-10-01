@@ -1,8 +1,9 @@
+import { eq } from 'drizzle-orm';
 import { afterAll, describe, expect, it } from 'vitest';
 import { AppError } from '../../src/domain/errors';
 import { hashPassword } from '../../src/server/auth/password';
 import { closeDb, db } from '../../src/server/db/client';
-import { orgMemberships, users } from '../../src/server/db/schema';
+import { organizations, orgMemberships, users } from '../../src/server/db/schema';
 import { uuidv7 } from '../../src/server/db/uuid';
 import { login } from '../../src/server/modules/auth/service';
 import { createWorkspace } from './helpers';
@@ -33,6 +34,18 @@ describe('sign-in limits (integration)', () => {
     for (let i = 0; i < 31; i++) outcomes.push(await attempt(email, `guess-${i}`, `198.18.${Math.floor(i / 250)}.${i % 250}`));
     expect(outcomes.slice(0, 30).every((o) => o === 401)).toBe(true);
     expect(outcomes[30]).toBe(429);
+  });
+
+  it('does not let anyone lock others out of a demo account, whose password is published', async () => {
+    const ws = await createWorkspace();
+    await db().update(organizations).set({ isDemo: true }).where(eq(organizations.id, ws.orgId));
+    const userId = uuidv7();
+    const email = `${userId}@example.com`;
+    await db().insert(users).values({ id: userId, email, name: 'Demo', status: 'active', passwordHash: await hashPassword('cytolab-demo') });
+    await db().insert(orgMemberships).values({ orgId: ws.orgId, userId, role: 'scientist', status: 'active' });
+
+    for (let i = 0; i < 31; i++) await attempt(email, `wrong-${i}`, `198.18.2.${i}`);
+    expect(await attempt(email, 'cytolab-demo', '198.18.3.9')).toBe('ok');
   });
 
   it('caps attempts from one address spread across many accounts', async () => {

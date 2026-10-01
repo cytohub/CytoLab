@@ -72,6 +72,18 @@ describe('attachment storage (integration)', () => {
     expect(await statusOf(createAttachment(admin, project.id, { fileName: 'b.txt', contentType: 'text/plain', data: new Uint8Array(600) }))).toBe(409);
   });
 
+  it('holds the quota when uploads arrive at the same moment', async () => {
+    vi.stubEnv('MAX_ORG_STORAGE_BYTES', '1000');
+    resetEnvCache();
+    const ws = await createWorkspace();
+    const { admin, project } = await projectFor(ws);
+    const outcomes = await Promise.all(
+      Array.from({ length: 5 }, (_, i) => statusOf(createAttachment(admin, project.id, { fileName: `${i}.txt`, contentType: 'text/plain', data: new Uint8Array(300) }))),
+    );
+    expect(outcomes.filter((o) => o === 'ok')).toHaveLength(3);
+    expect(outcomes.filter((o) => o === 409)).toHaveLength(2);
+  });
+
   it('limits how many uploads one person starts per hour', async () => {
     const ws = await createWorkspace();
     const { project } = await projectFor(ws);
@@ -80,5 +92,18 @@ describe('attachment storage (integration)', () => {
     for (let i = 0; i < 61; i++) outcomes.push(await statusOf(assertCanUpload(uploader, project.id)));
     expect(outcomes.slice(0, 60).every((o) => o === 'ok')).toBe(true);
     expect(outcomes[60]).toBe(429);
+  });
+
+  it('counts each upload once against the hourly limit', async () => {
+    const ws = await createWorkspace();
+    const { project } = await projectFor(ws);
+    const uploader = await ws.addUser('researcher');
+    const outcomes: Array<number | 'ok'> = [];
+    for (let i = 0; i < 60; i++) {
+      // What the upload route does: check, read the body, then store.
+      outcomes.push(await statusOf(assertCanUpload(uploader, project.id).then(() => createAttachment(uploader, project.id, { fileName: `${i}.txt`, contentType: 'text/plain', data: new Uint8Array([i]) }))));
+    }
+    expect(outcomes.every((o) => o === 'ok')).toBe(true);
+    expect(await statusOf(assertCanUpload(uploader, project.id))).toBe(429);
   });
 });

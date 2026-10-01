@@ -57,7 +57,6 @@ export function env(): Env {
   return cached;
 }
 
-/** For tests that change process.env between suites. */
 /**
  * Demo workspaces carry accounts with a published password. Outside a declared
  * public demo, production treats them as closed: no listed accounts, no
@@ -68,6 +67,7 @@ export function demoWorkspacesOpen(): boolean {
   return NODE_ENV !== 'production' || PUBLIC_DEMO;
 }
 
+/** For tests that change process.env between suites. */
 export function resetEnvCache(): void {
   cached = undefined;
 }

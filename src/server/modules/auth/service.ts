@@ -27,7 +27,6 @@ export async function login(input: LoginInput, meta: RequestMeta): Promise<Login
   const address = ipBucket(meta.ip);
   const pairKey = `${address}:${input.email}`;
   loginAddressLimiter.consume(address);
-  loginAccountLimiter.consume(input.email);
   loginLimiter.consume(pairKey);
 
   const [account] = await db()
@@ -47,6 +46,12 @@ export async function login(input: LoginInput, meta: RequestMeta): Promise<Login
     .where(and(eq(users.email, input.email), eq(orgMemberships.status, 'active')))
     .orderBy(asc(orgMemberships.createdAt))
     .limit(1);
+
+  // The per-account cap stops guessing spread over many addresses. Open demo
+  // accounts have a published password, so there is nothing to guess, and the
+  // cap would only let anyone lock everyone else out of them.
+  const publishedPassword = account?.orgIsDemo === true && demoWorkspacesOpen();
+  if (!publishedPassword) loginAccountLimiter.consume(input.email);
 
   const hash = account?.passwordHash ?? (await timingSafeDummyHash());
   const passwordOk = await verifyPassword(input.password, hash);
@@ -88,18 +93,18 @@ export async function login(input: LoginInput, meta: RequestMeta): Promise<Login
 }
 
 export async function logout(token: string, meta: RequestMeta): Promise<void> {
-  const session = await revokeSession(token);
-  if (!session) return;
-  await db().transaction((tx) =>
-    recordSystemAudit(tx, {
+  await db().transaction(async (tx) => {
+    const session = await revokeSession(token, tx);
+    if (!session) return;
+    await recordSystemAudit(tx, {
       orgId: session.orgId,
       actorId: session.userId,
       action: 'logout',
       resourceType: 'session',
       resourceId: session.id,
       metadata: { ip: meta.ip, userAgent: meta.userAgent },
-    }),
-  );
+    });
+  });
 }
 
 export interface DemoAccount {

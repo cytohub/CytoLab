@@ -1,5 +1,4 @@
 import 'server-only';
-import { createHash, timingSafeEqual } from 'node:crypto';
 import { cookies, headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import type { NextRequest } from 'next/server';
@@ -7,17 +6,14 @@ import { cache } from 'react';
 import { env } from '../env';
 import { normalizeIp } from '../http/client-ip';
 import { logger } from '../lib/logger';
+import { sameSecret } from '../lib/secrets';
 import type { AuthContext } from './context';
 import { resolveSession, sessionCookieName, type RequestMeta } from './sessions';
 
 export const CLIENT_IP_SECRET_HEADER = 'x-client-ip-secret';
 
-function sameSecret(provided: string, expected: string): boolean {
-  const digest = (value: string) => createHash('sha256').update(value).digest();
-  return timingSafeEqual(digest(provided), digest(expected));
-}
-
 let warnedUntrusted = false;
+let warnedUnvouched = false;
 
 /**
  * The client's address, which rate limits and audit entries key on.
@@ -35,6 +31,13 @@ export function clientIp(h: Headers): string | null {
   if (CLIENT_IP_HEADER) {
     const vouched = !CLIENT_IP_SECRET || sameSecret(h.get(CLIENT_IP_SECRET_HEADER) ?? '', CLIENT_IP_SECRET);
     if (vouched) return normalizeIp(h.get(CLIENT_IP_HEADER)?.split(',')[0]);
+    if (!warnedUnvouched) {
+      // Expected now and then (someone reaching the origin directly), but if
+      // every request lands here the CDN is not sending the secret, and all
+      // visitors share the proxy's address in the rate limits.
+      warnedUnvouched = true;
+      logger.warn(`A request arrived without a valid ${CLIENT_IP_SECRET_HEADER}; its address comes from X-Forwarded-For`);
+    }
   } else if (NODE_ENV === 'production' && !warnedUntrusted) {
     warnedUntrusted = true;
     logger.warn('CLIENT_IP_HEADER is not set; client addresses come from X-Forwarded-For and may be spoofed');
