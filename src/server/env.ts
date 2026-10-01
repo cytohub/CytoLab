@@ -21,9 +21,18 @@ const envSchema = z.object({
     .toLowerCase()
     .regex(/^[a-z0-9-]+$/, { error: 'CLIENT_IP_HEADER must be a header name such as x-real-ip' })
     .optional(),
+  // When set, CLIENT_IP_HEADER counts only on requests that also carry
+  // `x-client-ip-secret: <this value>`, added by the CDN. Requests that reach
+  // the origin directly cannot then claim an address.
+  CLIENT_IP_SECRET: z.string().min(16).optional(),
   STORAGE_DIR: z.string().min(1).default('.data/uploads'),
   MAX_UPLOAD_BYTES: z.coerce.number().int().positive().default(25 * 1024 * 1024),
-  INTERNAL_JOB_SECRET: z.string().min(16).optional(),
+  // The placeholder from .env.example is public, so it disables the endpoint.
+  INTERNAL_JOB_SECRET: z
+    .string()
+    .min(16)
+    .optional()
+    .transform((v) => (v === 'change-me-to-a-long-random-string' ? undefined : v)),
   LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
 });
 

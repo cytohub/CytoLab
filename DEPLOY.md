@@ -33,6 +33,7 @@ working on 2026-12-01.
 | `DEMO_MODE=true` | The sign-in page lists one demo account per role and shows the shared password. |
 | `PUBLIC_DEMO=true` | Uploads, users, teams and profiles become read-only (HTTP 403 with an explanation). All other writes are allowed but counted per visitor IP (HTTP 429 with `Retry-After` beyond the limit). The banner and sign-in page mention the nightly reset. It also allows `db:seed` and `db:reset` to run in production, but only while the database contains nothing except demo workspaces. |
 | `CLIENT_IP_HEADER` | Which request header carries the visitor's real IP. It must be a header your proxy overwrites, so visitors cannot fake their address to dodge the limit. |
+| `CLIENT_IP_SECRET` | Behind Cloudflare: a secret the CDN adds to every request as `x-client-ip-secret`. `CLIENT_IP_HEADER` is believed only when it is present, because anyone can reach Railway directly and send their own `cf-connecting-ip`. |
 | `APP_URL` | The canonical address. In production, `www.<that host>` redirects to it. |
 
 ## 1. Put the code where Railway can build it
@@ -184,12 +185,17 @@ from).
    `https://www.cytolab.ai`, target `https://cytolab.ai`, status `301`, and
    every option ticked (preserve query string, include subdomains, subpath
    matching, preserve path suffix). Save and deploy it.
-8. On the `web` service, set `CLIENT_IP_HEADER=cf-connecting-ip` and deploy.
-   Behind Cloudflare, Railway sees Cloudflare's address instead of the
-   visitor's.
-9. Once `https://cytolab.ai` works, delete the `*.up.railway.app` domain from
-   **Settings → Networking**. All traffic then passes through Cloudflare, which
-   is what makes `cf-connecting-ip` trustworthy.
+8. Generate a secret with `openssl rand -hex 32`. In **Rules → Transform
+   Rules → Modify Request Header**, create a rule for all incoming requests
+   that **sets** the static header `x-client-ip-secret` to that value.
+9. On the `web` service, set `CLIENT_IP_HEADER=cf-connecting-ip` and
+   `CLIENT_IP_SECRET=<the same value>`, then deploy. Behind Cloudflare,
+   Railway sees Cloudflare's address instead of the visitor's, so the app
+   reads `cf-connecting-ip`, but only on requests that carry the secret:
+   Railway's edge serves `cytolab.ai` to anyone who connects to it directly,
+   and those requests could otherwise claim any address.
+10. Once `https://cytolab.ai` works, delete the `*.up.railway.app` domain from
+    **Settings → Networking**.
 
 ### B. Namecheap, DNSimple or bunny.net
 
