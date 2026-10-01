@@ -1,5 +1,5 @@
 import 'server-only';
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq, isNull, max } from 'drizzle-orm';
 import { todayIn } from '@/domain/dates';
 import { diffFields, hasChanges } from '@/domain/diff';
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '@/domain/errors';
@@ -14,7 +14,7 @@ import { entityTags, experiments, experimentTypes, projects, tags } from '../../
 import { registerEntity, setEntityDeleted, syncEntityLabel } from '../../platform/entities';
 import { recordEvent, type NotificationSpec } from '../../platform/events';
 import { formatExperimentId } from '@/domain/identifiers';
-import { nextSequenceValue } from '../../platform/sequences';
+import { nextSequenceAbove } from '../../platform/sequences';
 import { indexExperiments } from '../search/indexers';
 import { changed, isOrgMember, isOrgTeam } from '../shared/references';
 import { getExperimentDetail, type ExperimentDetail } from './detail';
@@ -106,7 +106,9 @@ export async function createExperiment(ctx: AuthContext, input: CreateExperiment
 
   const experimentId = await db().transaction(async (tx) => {
     const id = crypto.randomUUID();
-    const number = 1000 + (await nextSequenceValue(tx, ctx.orgId, 'experiment'));
+    // Experiment numbers are the counter plus 1000 (EXP-1001 onwards).
+    const [highest] = await tx.select({ number: max(experiments.number) }).from(experiments).where(eq(experiments.orgId, ctx.orgId));
+    const number = 1000 + (await nextSequenceAbove(tx, ctx.orgId, 'experiment', Math.max(0, (highest?.number ?? 1000) - 1000)));
     const displayId = formatExperimentId(number);
     const now = new Date();
 

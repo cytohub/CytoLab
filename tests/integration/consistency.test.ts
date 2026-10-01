@@ -1,12 +1,14 @@
+import { eq } from 'drizzle-orm';
 import { afterAll, describe, expect, it } from 'vitest';
 import { AppError } from '../../src/domain/errors';
 import { closeDb, db } from '../../src/server/db/client';
-import { milestones } from '../../src/server/db/schema';
+import { idSequences, milestones, samples } from '../../src/server/db/schema';
 import { toAppError } from '../../src/server/http/api';
 import { createTag, setEntityTags } from '../../src/server/modules/collaboration/service';
 import { updateExperimentType } from '../../src/server/modules/config/service';
 import { addTeamMember, updateMember, updateProfile, updateTeam } from '../../src/server/modules/directory/service';
 import { createExperiment, updateExperiment } from '../../src/server/modules/experiments/mutations';
+import { linkSample } from '../../src/server/modules/experiments/sub-records';
 import { resolveExperimentId } from '../../src/server/modules/experiments/service';
 import { createMilestone, updateMilestone } from '../../src/server/modules/projects/milestones';
 import { createProject, getProject, updateProject } from '../../src/server/modules/projects/service';
@@ -85,6 +87,23 @@ describe('milestone numbering (integration)', () => {
     await db().insert(milestones).values({ orgId: ws.orgId, projectId: project.id, sequence: 7, title: 'Seeded', status: 'pending', position: 0 });
     const next = await createMilestone(admin, project.id, { title: 'Next' });
     expect(next.sequence).toBe(8);
+  });
+});
+
+describe('experiment and sample numbering (integration)', () => {
+  it('continues after records numbered while no counter was kept', async () => {
+    const { ws, admin, project, experiment } = await setup();
+    const { sampleId } = await linkSample(admin, experiment.id, { role: 'output', sample: { name: 'First aliquot', sampleType: 'Cell pellet' } });
+    // A database seeded before the counters were written has the records but no rows here.
+    await db().delete(idSequences).where(eq(idSequences.orgId, ws.orgId));
+
+    const next = await createExperiment(admin, experimentInput(ws, project.id, admin.userId));
+    expect(next.displayId).toBe(`EXP-${Number(experiment.displayId.slice(4)) + 1}`);
+
+    const [first] = await db().select({ number: samples.number }).from(samples).where(eq(samples.id, sampleId!));
+    const second = await linkSample(admin, next.id, { role: 'output', sample: { name: 'Second aliquot', sampleType: 'Cell pellet' } });
+    const [created] = await db().select({ number: samples.number }).from(samples).where(eq(samples.id, second.sampleId!));
+    expect(created!.number).toBe(first!.number + 1);
   });
 });
 

@@ -24,7 +24,7 @@ import {
 } from '../../db/schema';
 import { registerEntity } from '../../platform/entities';
 import { recordEvent, type AuditAction } from '../../platform/events';
-import { nextSequenceValue } from '../../platform/sequences';
+import { nextSequenceAbove } from '../../platform/sequences';
 import { assertCanEdit, loadEditableExperiment, touchExperiment } from './mutations';
 
 /** Parses a leading number out of a free-text value (e.g. "5", "1.0 ×10⁶" → 5, 1.0). */
@@ -294,7 +294,8 @@ export function linkSample(ctx: AuthContext, experimentId: string, input: LinkSa
 
     if (input.sample) {
       const id = crypto.randomUUID();
-      const number = await nextSequenceValue(tx, ctx.orgId, 'sample');
+      const [highest] = await tx.select({ number: max(samples.number) }).from(samples).where(eq(samples.orgId, ctx.orgId));
+      const number = await nextSequenceAbove(tx, ctx.orgId, 'sample', highest?.number ?? 0);
       const displayId = formatSampleId(number);
       if (input.sample.parentSampleId) await assertSampleInOrg(tx, ctx, input.sample.parentSampleId);
       await registerEntity(tx, { id, orgId: ctx.orgId, entityType: 'sample', displayId, title: input.sample.name, createdBy: ctx.userId });
