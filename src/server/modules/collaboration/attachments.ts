@@ -13,6 +13,7 @@ import { getEntityRef } from '../../platform/entities';
 import { recordEvent } from '../../platform/events';
 import { newStorageKey, sha256, storage } from '../../platform/storage';
 import { initialsOf, type UserSummary } from '../shared/presenters';
+import { assertCanEditEntity } from './service';
 
 export interface AttachmentView {
   id: string;
@@ -46,9 +47,10 @@ function isAllowedType(contentType: string): boolean {
 /** 60 uploads per hour per person. */
 const uploadLimiter = new RateLimiter(60, 60 * 60 * 1000, 'You are uploading files faster than allowed. Try again later.');
 
+/** Files join the record, so adding one takes the same rights as editing it (as tags and links do). */
 async function assertUploadTarget(ctx: AuthContext, entityId: string): Promise<void> {
   authorize(ctx, 'attachment:upload');
-  await getEntityRef(ctx, entityId);
+  await assertCanEditEntity(ctx, await getEntityRef(ctx, entityId));
 }
 
 /**
@@ -187,6 +189,7 @@ export async function deleteAttachment(ctx: AuthContext, attachmentId: string): 
     .limit(1);
   if (!row) throw new NotFoundError('Attachment');
   if (!canDeleteAttachment(actorOf(ctx), row.uploadedBy)) throw new ForbiddenError('You can only delete files you uploaded');
+  await getEntityRef(ctx, row.entityId); // a deleted record keeps its files as they were
 
   await db().transaction(async (tx) => {
     await tx.update(attachments).set({ deletedAt: new Date() }).where(eq(attachments.id, attachmentId));

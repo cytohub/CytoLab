@@ -88,6 +88,7 @@ export async function updateComment(ctx: AuthContext, commentId: string, body: s
   if (!current) throw new NotFoundError('Comment');
   authorize(ctx, 'comment:create');
   if (current.authorId !== ctx.userId) throw new ForbiddenError('You can only edit your own comments');
+  await getEntityRef(ctx, current.entityId); // a deleted record keeps its discussion as it was
   const changes = diffFields({ body: current.body }, { body });
   await db().transaction(async (tx) => {
     await tx.update(comments).set({ body, editedAt: new Date(), updatedAt: new Date() }).where(eq(comments.id, commentId));
@@ -102,6 +103,7 @@ export async function deleteComment(ctx: AuthContext, commentId: string): Promis
   const [current] = await db().select({ id: comments.id, authorId: comments.authorId, entityId: comments.entityId }).from(comments).where(and(eq(comments.id, commentId), eq(comments.orgId, ctx.orgId), isNull(comments.deletedAt))).limit(1);
   if (!current) throw new NotFoundError('Comment');
   if (!canModifyAuthoredContent(actorOf(ctx), current.authorId, 'comment:create', 'comment:moderate')) throw new ForbiddenError('You can only delete your own comments');
+  await getEntityRef(ctx, current.entityId);
   await db().transaction(async (tx) => {
     await tx.update(comments).set({ deletedAt: new Date() }).where(eq(comments.id, commentId));
     await recordEvent(tx, ctx, { action: 'comment.deleted', entityId: current.entityId, projectId: null, activity: false, audit: { action: 'delete', resourceType: 'comment', resourceId: commentId, changes: null } });
@@ -111,7 +113,7 @@ export async function deleteComment(ctx: AuthContext, commentId: string): Promis
 // --- Record edit rights ---------------------------------------------------
 
 /**
- * Whether the actor may change a record's metadata (tags, outgoing links): the
+ * Whether the actor may change a record's metadata (tags, outgoing links, files): the
  * same rights as editing the record itself. Samples have no owner, so the
  * sample permission decides.
  */
@@ -132,7 +134,7 @@ async function canEditEntity(ctx: AuthContext, entity: EntityRef): Promise<boole
   return roleHasPermission(actor.role, 'sample:update');
 }
 
-async function assertCanEditEntity(ctx: AuthContext, entity: EntityRef): Promise<void> {
+export async function assertCanEditEntity(ctx: AuthContext, entity: EntityRef): Promise<void> {
   if (!(await canEditEntity(ctx, entity))) throw new ForbiddenError(`You can only change ${entity.displayId} if you can edit it`);
 }
 

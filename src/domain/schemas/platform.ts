@@ -73,7 +73,7 @@ export const createTeamSchema = z.object({
   color: colorToken.default('blue'),
 });
 export type CreateTeamInput = z.output<typeof createTeamSchema>;
-export const updateTeamSchema = createTeamSchema.partial();
+export const updateTeamSchema = createTeamSchema.partial().extend({ color: colorToken.optional() }); // no create default (see updateInputSchema)
 export type UpdateTeamInput = z.output<typeof updateTeamSchema>;
 
 export const addTeamMemberSchema = z.object({
@@ -93,6 +93,7 @@ export const createExperimentTypeSchema = z.object({
   color: colorToken.default('blue'),
 });
 export const updateExperimentTypeSchema = createExperimentTypeSchema.partial().extend({
+  color: colorToken.optional(), // no create default (see updateInputSchema)
   isActive: z.boolean().optional(),
 });
 

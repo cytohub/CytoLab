@@ -5,6 +5,7 @@ import type { ActivityQuery } from '@/domain/schemas/platform';
 import { entityHref } from '@/lib/routes';
 import type { AuthContext } from '../../auth/context';
 import { db } from '../../db/client';
+import { escapeLike } from '../../db/sql-utils';
 import { activityEvents, entities, users } from '../../db/schema';
 import { decodeCursor, encodeCursor } from '../shared/pagination';
 import { initialsOf } from '../shared/presenters';
@@ -30,7 +31,7 @@ export async function listActivity(ctx: AuthContext, query: ActivityQuery): Prom
   if (query.entityId) filters.push(eq(activityEvents.entityId, query.entityId));
   if (query.projectId) filters.push(eq(activityEvents.projectId, query.projectId));
   if (query.actorId) filters.push(eq(activityEvents.actorId, query.actorId));
-  if (query.action) filters.push(or(eq(activityEvents.action, query.action), sql`${activityEvents.action} like ${query.action + '.%'}`)!);
+  if (query.action) filters.push(or(eq(activityEvents.action, query.action), sql`${activityEvents.action} like ${escapeLike(query.action) + '.%'}`)!);
 
   if (query.before) {
     const cursor = decodeCursor(query.before);

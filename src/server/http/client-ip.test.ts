@@ -28,6 +28,21 @@ describe('RateLimiter', () => {
     expect(limiter.size).toBe(100);
   });
 
+  it('drops the least-hit entries first, so a flood of new keys cannot reset a busy one', () => {
+    const limiter = new RateLimiter(5, 60_000, undefined, 100);
+    for (let i = 0; i < 5; i++) limiter.consume('victim', 0);
+    for (let i = 0; i < 1_000; i++) limiter.consume(`junk-${i}`, 1);
+    expect(() => limiter.consume('victim', 2)).toThrow();
+  });
+
+  it('keeps counting a new key when every other entry is busier', () => {
+    const limiter = new RateLimiter(2, 60_000, undefined, 3);
+    for (const key of ['a', 'b', 'c']) for (let i = 0; i < 2; i++) limiter.consume(key, 0);
+    limiter.consume('new', 1);
+    limiter.consume('new', 2);
+    expect(() => limiter.consume('new', 3)).toThrow();
+  });
+
   it('still limits a key that keeps coming back', () => {
     const limiter = new RateLimiter(2, 60_000, undefined, 100);
     limiter.consume('k', 0);

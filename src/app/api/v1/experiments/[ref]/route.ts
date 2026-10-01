@@ -22,4 +22,4 @@ export const DELETE = api<{ ref: string }>(async ({ ctx, params }) => {
   const id = await resolveExperimentId(ctx, params.ref);
   await deleteExperiment(ctx, id);
   return ok({ success: true });
-});
+}, { publicDemoLock: 'records' });

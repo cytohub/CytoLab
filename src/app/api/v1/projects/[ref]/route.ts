@@ -15,4 +15,4 @@ export const PATCH = api<{ ref: string }>(async ({ ctx, req, params }) => {
 export const DELETE = api<{ ref: string }>(async ({ ctx, params }) => {
   await deleteProject(ctx, params.ref);
   return ok({ success: true });
-});
+}, { publicDemoLock: 'records' });

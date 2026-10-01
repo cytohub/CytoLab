@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ForbiddenError, RateLimitError } from '@/domain/errors';
-import { PUBLIC_DEMO_LOCKS, PUBLIC_DEMO_WRITE_LIMIT } from '@/domain/public-demo';
+import { PUBLIC_DEMO_LOCKS, PUBLIC_DEMO_TOTAL_WRITE_LIMIT, PUBLIC_DEMO_WRITE_LIMIT } from '@/domain/public-demo';
 import { resetEnvCache } from '../env';
-import { demoWriteLimiter, enforcePublicDemoWrite, publicDemoLockReason } from './public-demo';
+import { demoTotalWriteLimiter, demoWriteLimiter, enforcePublicDemoWrite, publicDemoLockReason } from './public-demo';
 
 const visitor = (ip: string) => new Headers({ 'x-forwarded-for': ip });
 
@@ -26,6 +26,7 @@ describe('public demo guardrails', () => {
     resetEnvCache();
     expect(() => enforcePublicDemoWrite(visitor('192.0.2.2'), 'files')).toThrow(new ForbiddenError(PUBLIC_DEMO_LOCKS.files));
     expect(() => enforcePublicDemoWrite(visitor('192.0.2.2'), 'people')).toThrow(PUBLIC_DEMO_LOCKS.people);
+    expect(() => enforcePublicDemoWrite(visitor('192.0.2.2'), 'records')).toThrow(PUBLIC_DEMO_LOCKS.records);
     expect(publicDemoLockReason('files')).toBe(PUBLIC_DEMO_LOCKS.files);
   });
 
@@ -40,6 +41,19 @@ describe('public demo guardrails', () => {
     } finally {
       demoWriteLimiter.reset('192.0.2.3');
       demoWriteLimiter.reset('192.0.2.4');
+      demoTotalWriteLimiter.reset('all');
+    }
+  });
+
+  it('caps all visitors together, however many addresses one of them has', () => {
+    vi.stubEnv('PUBLIC_DEMO', 'true');
+    resetEnvCache();
+    try {
+      // Each write from its own /64, so no per-address limit is reached.
+      for (let i = 0; i < PUBLIC_DEMO_TOTAL_WRITE_LIMIT.limit; i++) enforcePublicDemoWrite(visitor(`2001:db8:0:${i.toString(16)}::1`), undefined);
+      expect(() => enforcePublicDemoWrite(visitor('2001:db8:1::1'), undefined)).toThrow(RateLimitError);
+    } finally {
+      demoTotalWriteLimiter.reset('all');
     }
   });
 });

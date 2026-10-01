@@ -16,6 +16,10 @@ case "${PUBLIC_DEMO:-false}" in
   true | 1) pnpm db:seed ;;
 esac
 
+# The owner connection is only for the schema steps above. The web server runs
+# without it, so code running in the app can reach only the restricted role.
+unset MIGRATION_DATABASE_URL
+
 # Keep idle connections open longer than the platform's proxy does (60 s on
 # Railway), so it never reuses a connection Node has already closed.
 exec node_modules/.bin/next start --keepAliveTimeout 70000
