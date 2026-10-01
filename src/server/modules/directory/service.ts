@@ -1,14 +1,14 @@
 import 'server-only';
-import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull, ne, sql } from 'drizzle-orm';
 import { diffFields, hasChanges, removedFields } from '@/domain/diff';
 import type { Role } from '@/domain/enums';
-import { NotFoundError, ValidationError } from '@/domain/errors';
+import { ForbiddenError, NotFoundError, ValidationError } from '@/domain/errors';
 import { ROLE_META, TEAM_ROLE_LABELS } from '@/domain/labels';
 import type { CreateMemberInput, CreateTeamInput, UpdateMemberInput, UpdateProfileInput, UpdateTeamInput } from '@/domain/schemas/platform';
 import { routes } from '@/lib/routes';
 import type { AuthContext } from '../../auth/context';
 import { authorize } from '../../authz';
-import { db } from '../../db/client';
+import { db, type Executor } from '../../db/client';
 import { orgMemberships, teamMemberships, teams, users } from '../../db/schema';
 import { hashPassword } from '../../auth/password';
 import { recordEvent } from '../../platform/events';
@@ -67,6 +67,15 @@ export async function listMembers(ctx: AuthContext): Promise<MemberView[]> {
   }));
 }
 
+async function belongsToAnotherOrg(executor: Executor, orgId: string, userId: string): Promise<boolean> {
+  const [row] = await executor
+    .select({ id: orgMemberships.id })
+    .from(orgMemberships)
+    .where(and(eq(orgMemberships.userId, userId), ne(orgMemberships.orgId, orgId)))
+    .limit(1);
+  return row !== undefined;
+}
+
 export async function getMember(ctx: AuthContext, userId: string): Promise<MemberView> {
   const members = await listMembers(ctx);
   const member = members.find((m) => m.id === userId);
@@ -88,6 +97,12 @@ export async function createMember(ctx: AuthContext, input: CreateMemberInput): 
     } else {
       const [membership] = await tx.select({ id: orgMemberships.id }).from(orgMemberships).where(and(eq(orgMemberships.orgId, ctx.orgId), eq(orgMemberships.userId, id))).limit(1);
       if (membership) throw new ValidationError('That person is already a member', { email: ['Already a member of this organization'] });
+      // Accounts are global. Attaching one that another organization uses would
+      // reveal its profile here and add the person without their consent, so it
+      // waits for an invitation the person accepts (not built yet).
+      if (await belongsToAnotherOrg(tx, ctx.orgId, id)) {
+        throw new ValidationError('That email is already used in another organization', { email: ['Invitations across organizations are not available yet'] });
+      }
     }
 
     await tx.insert(orgMemberships).values({ orgId: ctx.orgId, userId: id, role: input.role, status: 'invited' });
@@ -118,6 +133,11 @@ export async function updateMember(ctx: AuthContext, userId: string, input: Upda
     { name: membership.name, title: membership.title, role: membership.role, status: membership.status },
     { name: input.name, title: input.title, role: input.role, status: input.status },
   );
+  // Name and title live on the global account; an admin may only change them
+  // for people no other organization shares.
+  if ((changes.name || changes.title) && (await belongsToAnotherOrg(db(), ctx.orgId, userId))) {
+    throw new ForbiddenError('This person also belongs to another organization, so only they can change their name and title');
+  }
 
   await db().transaction(async (tx) => {
     if (input.name !== undefined || input.title !== undefined) {
