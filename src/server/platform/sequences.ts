@@ -32,3 +32,13 @@ export async function bumpSequenceTo(tx: Executor, orgId: string, scope: Sequenc
       set: { lastValue: sql`greatest(${idSequences.lastValue}, ${value})` },
     });
 }
+
+/**
+ * The next value, but always above `highestInUse`: records numbered without
+ * the counter (seed data from before it was kept, imports) are skipped instead
+ * of colliding on every create. The upsert's row lock still serializes callers.
+ */
+export async function nextSequenceAbove(tx: Executor, orgId: string, scope: SequenceScope, highestInUse: number): Promise<number> {
+  await bumpSequenceTo(tx, orgId, scope, highestInUse);
+  return nextSequenceValue(tx, orgId, scope);
+}
