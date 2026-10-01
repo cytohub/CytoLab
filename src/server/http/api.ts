@@ -105,13 +105,55 @@ function isSameOrigin(req: NextRequest, origin: string): boolean {
   return host ? originHost === host.toLowerCase() : false;
 }
 
+/** Error bodies list at most this many fields, however many issues a payload has. */
+const MAX_REPORTED_FIELDS = 50;
+
 export function zodFieldErrors(error: ZodError): FieldErrors {
   const fields: FieldErrors = {};
+  let reported = 0;
   for (const issue of error.issues) {
     const key = issue.path.length ? issue.path.join('.') : '_form';
-    (fields[key] ??= []).push(issue.message);
+    if (!fields[key]) {
+      if (reported >= MAX_REPORTED_FIELDS) break;
+      fields[key] = [];
+      reported += 1;
+    }
+    if (fields[key].length < 5) fields[key].push(issue.message);
   }
   return fields;
+}
+
+/**
+ * Reads a request body, refusing it as soon as it exceeds `maxBytes`.
+ * Content-Length is only a hint (chunked requests omit it), so bytes are
+ * counted as they arrive and the stream is cancelled at the limit rather than
+ * buffered whole first.
+ */
+export async function readBodyCapped(req: Request, maxBytes: number, reportedLimit = maxBytes): Promise<Uint8Array> {
+  const declared = Number(req.headers.get('content-length') ?? 0);
+  if (declared > maxBytes) throw new PayloadTooLargeError(reportedLimit);
+  if (!req.body) return new Uint8Array(0);
+
+  const reader = req.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > maxBytes) {
+      await reader.cancel().catch(() => {});
+      throw new PayloadTooLargeError(reportedLimit);
+    }
+    chunks.push(value);
+  }
+  const body = new Uint8Array(total);
+  let at = 0;
+  for (const chunk of chunks) {
+    body.set(chunk, at);
+    at += chunk.byteLength;
+  }
+  return body;
 }
 
 export async function parseJson<S extends z.ZodType>(req: NextRequest, schema: S): Promise<z.output<S>> {
@@ -119,14 +161,11 @@ export async function parseJson<S extends z.ZodType>(req: NextRequest, schema: S
   if (!contentType.toLowerCase().includes('application/json')) {
     throw new UnsupportedMediaTypeError('Send the request body as application/json');
   }
-  const declared = Number(req.headers.get('content-length') ?? 0);
-  if (declared > MAX_JSON_BYTES) throw new PayloadTooLargeError(MAX_JSON_BYTES);
-
-  const text = await req.text();
-  if (text.length > MAX_JSON_BYTES) throw new PayloadTooLargeError(MAX_JSON_BYTES);
+  const bytes = await readBodyCapped(req, MAX_JSON_BYTES);
 
   let body: unknown;
   try {
+    const text = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
     body = text ? JSON.parse(text) : {};
   } catch {
     throw new BadRequestError('Request body is not valid JSON');
@@ -137,6 +176,7 @@ export async function parseJson<S extends z.ZodType>(req: NextRequest, schema: S
 export function parseQuery<S extends z.ZodType>(req: NextRequest, schema: S): z.output<S> {
   const raw: Record<string, string | string[]> = {};
   for (const [key, value] of req.nextUrl.searchParams) {
+    if (key.includes('\u0000') || value.includes('\u0000')) throw new BadRequestError('The query string contains a NUL character');
     const existing = raw[key];
     raw[key] = existing === undefined ? value : Array.isArray(existing) ? [...existing, value] : [existing, value];
   }
@@ -181,8 +221,11 @@ export function toAppError(err: unknown): AppError | null {
   if (pg?.code === '23503') return new BadRequestError('A referenced record does not exist');
   if (pg?.code === '23514') return new ValidationError('A value violates a data rule');
   // Bodies and query strings are validated, so a malformed value reaching
-  // Postgres comes from a path segment such as /milestones/not-a-uuid.
-  if (pg?.code === '22P02') return new NotFoundError('Resource');
+  // Postgres comes from a path segment such as /milestones/not-a-uuid (22P02)
+  // or one holding a NUL byte (22021): either way, no such resource.
+  if (pg?.code === '22P02' || pg?.code === '22021') return new NotFoundError('Resource');
+  // Any other data exception (out-of-range number or date) is a bad value.
+  if (pg?.code?.startsWith('22')) return new ValidationError('A value is out of range or malformed');
   return null;
 }
 

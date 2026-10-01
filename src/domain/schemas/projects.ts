@@ -94,6 +94,6 @@ export const updateMilestoneSchema = z.object({
   dueDate: dateOnly.nullable().optional(),
   status: z.enum(MILESTONE_STATUSES).optional(),
   ownerId: uuid.nullable().optional(),
-  position: z.number().int().min(0).optional(),
+  position: z.number().int().min(0).max(100_000).optional(),
 });
 export type UpdateMilestoneInput = z.input<typeof updateMilestoneSchema>;

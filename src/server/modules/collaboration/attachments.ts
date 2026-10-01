@@ -1,6 +1,7 @@
 import 'server-only';
 import { and, desc, eq, isNull } from 'drizzle-orm';
 import { ForbiddenError, NotFoundError, PayloadTooLargeError, ValidationError } from '@/domain/errors';
+import { MAX_DESCRIPTION_CHARS, normalizeContentType, normalizeFileName } from '@/domain/files';
 import { canDeleteAttachment } from '@/domain/permissions';
 import { actorOf, type AuthContext } from '../../auth/context';
 import { authorize } from '../../authz';
@@ -39,6 +40,12 @@ const ALLOWED_EXACT = new Set([
 
 function isAllowedType(contentType: string): boolean {
   return ALLOWED_EXACT.has(contentType) || ALLOWED_PREFIXES.some((p) => contentType.startsWith(p));
+}
+
+/** Checked before an upload body is read, so a refused upload costs nothing. */
+export async function assertCanUpload(ctx: AuthContext, entityId: string): Promise<void> {
+  authorize(ctx, 'attachment:upload');
+  await getEntityRef(ctx, entityId);
 }
 
 export async function listAttachments(ctx: AuthContext, entityId: string): Promise<AttachmentView[]> {
@@ -81,15 +88,20 @@ export async function createAttachment(
   entityId: string,
   file: { fileName: string; contentType: string; data: Uint8Array; description?: string | null },
 ): Promise<{ id: string }> {
-  authorize(ctx, 'attachment:upload');
-  await getEntityRef(ctx, entityId);
+  await assertCanUpload(ctx, entityId);
 
   if (file.data.byteLength === 0) throw new ValidationError('The file is empty', { file: ['Choose a non-empty file'] });
   if (file.data.byteLength > env().MAX_UPLOAD_BYTES) throw new PayloadTooLargeError(env().MAX_UPLOAD_BYTES);
-  if (!isAllowedType(file.contentType)) throw new ValidationError('That file type is not allowed', { file: [`Unsupported type: ${file.contentType}`] });
+  const contentType = normalizeContentType(file.contentType);
+  if (!isAllowedType(contentType)) throw new ValidationError('That file type is not allowed', { file: [`Unsupported type: ${contentType}`] });
+  const fileName = normalizeFileName(file.fileName);
+  const description = file.description?.replace(/\u0000/g, '').trim() || null;
+  if (description && description.length > MAX_DESCRIPTION_CHARS) {
+    throw new ValidationError('The description is too long', { description: [`Must be at most ${MAX_DESCRIPTION_CHARS} characters`] });
+  }
 
   const storageKey = newStorageKey(ctx.orgId);
-  await storage().put(storageKey, file.data, file.contentType);
+  await storage().put(storageKey, file.data, contentType);
 
   try {
     return await db().transaction(async (tx) => {
@@ -98,12 +110,12 @@ export async function createAttachment(
         .values({
           orgId: ctx.orgId,
           entityId,
-          fileName: file.fileName.slice(0, 255),
-          contentType: file.contentType,
+          fileName,
+          contentType,
           sizeBytes: file.data.byteLength,
           storageKey,
           checksumSha256: sha256(file.data),
-          description: file.description ?? null,
+          description,
           uploadedBy: ctx.userId,
         })
         .returning({ id: attachments.id });
@@ -111,7 +123,7 @@ export async function createAttachment(
         action: 'attachment.uploaded',
         entityId,
         projectId: null,
-        payload: { fileName: file.fileName },
+        payload: { fileName },
         audit: { action: 'create', resourceType: 'attachment', resourceId: row!.id, changes: null },
       });
       return row!;

@@ -1,4 +1,6 @@
 import { config } from 'dotenv';
+import os from 'node:os';
+import path from 'node:path';
 
 config({ quiet: true });
 
@@ -8,3 +10,5 @@ const env = process.env as Record<string, string>;
 env.DATABASE_URL = testUrl;
 env.NODE_ENV = 'test';
 env.LOG_LEVEL = 'error';
+// Uploads made by tests go to a throwaway directory, not the dev workspace's.
+env.STORAGE_DIR = path.join(os.tmpdir(), 'cytolab-test-uploads');
