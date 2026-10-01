@@ -1,7 +1,9 @@
 import 'server-only';
 import { createHash, randomBytes } from 'node:crypto';
+import { createReadStream } from 'node:fs';
 import { mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { Readable } from 'node:stream';
 import { env } from '../env';
 
 /**
@@ -11,6 +13,8 @@ import { env } from '../env';
 export interface StorageProvider {
   put(key: string, data: Uint8Array, contentType: string): Promise<void>;
   get(key: string): Promise<Uint8Array>;
+  /** The object as a stream, so serving a file never holds it all in memory. */
+  open(key: string): Promise<{ body: ReadableStream<Uint8Array>; size: number }>;
   delete(key: string): Promise<void>;
   exists(key: string): Promise<boolean>;
 }
@@ -34,6 +38,12 @@ class LocalDiskStorage implements StorageProvider {
 
   async get(key: string): Promise<Uint8Array> {
     return readFile(this.resolve(key));
+  }
+
+  async open(key: string): Promise<{ body: ReadableStream<Uint8Array>; size: number }> {
+    const file = this.resolve(key);
+    const { size } = await stat(file);
+    return { body: Readable.toWeb(createReadStream(file)) as ReadableStream<Uint8Array>, size };
   }
 
   async delete(key: string): Promise<void> {

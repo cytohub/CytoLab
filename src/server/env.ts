@@ -27,6 +27,8 @@ const envSchema = z.object({
   CLIENT_IP_SECRET: z.string().min(16).optional(),
   STORAGE_DIR: z.string().min(1).default('.data/uploads'),
   MAX_UPLOAD_BYTES: z.coerce.number().int().positive().default(25 * 1024 * 1024),
+  // Total attachment bytes one organization may store (soft-deleted files count; they stay on disk).
+  MAX_ORG_STORAGE_BYTES: z.coerce.number().int().positive().default(10 * 1024 * 1024 * 1024),
   // The placeholder from .env.example is public, so it disables the endpoint.
   INTERNAL_JOB_SECRET: z
     .string()

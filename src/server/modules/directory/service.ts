@@ -140,7 +140,21 @@ export async function updateMember(ctx: AuthContext, userId: string, input: Upda
     throw new ForbiddenError('This person also belongs to another organization, so only they can change their name and title');
   }
 
+  const losesAdmin = membership.role === 'admin' && membership.status === 'active' && ((input.role !== undefined && input.role !== 'admin') || input.status === 'suspended');
+
   await db().transaction(async (tx) => {
+    if (losesAdmin) {
+      // Lock the active admins so two admins demoting each other at once
+      // cannot both succeed and leave the organization with none.
+      const admins = await tx
+        .select({ userId: orgMemberships.userId })
+        .from(orgMemberships)
+        .where(and(eq(orgMemberships.orgId, ctx.orgId), eq(orgMemberships.role, 'admin'), eq(orgMemberships.status, 'active')))
+        .for('update');
+      if (!admins.some((a) => a.userId !== userId)) {
+        throw new ValidationError('An organization needs at least one active admin', { role: ['Make someone else an admin first'] });
+      }
+    }
     if (input.name !== undefined || input.title !== undefined) {
       await tx.update(users).set({ ...(input.name !== undefined ? { name: input.name } : {}), ...(input.title !== undefined ? { title: input.title } : {}), updatedAt: new Date() }).where(eq(users.id, userId));
     }
