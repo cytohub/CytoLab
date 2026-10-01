@@ -21,7 +21,7 @@ import { registerEntity, setEntityDeleted, syncEntityLabel } from '../../platfor
 import { recordEvent } from '../../platform/events';
 import { indexExperiments, indexProjects } from '../search/indexers';
 import { offset, pageMeta, type Paginated } from '../shared/pagination';
-import { changed, isOrgMember } from '../shared/references';
+import { changed, isOrgMember, isOrgTeam } from '../shared/references';
 import { toUserSummary, type TeamSummary, type UserSummary } from '../shared/presenters';
 import { loadProjectMetrics, type ProjectMetrics } from './metrics';
 
@@ -273,9 +273,8 @@ async function assertRefsExist(ctx: AuthContext, refs: { ownerId?: string; teamI
   if (refs.ownerId && !(await isOrgMember(ctx, refs.ownerId))) {
     throw new ValidationError('Owner is invalid', { ownerId: ['Unknown user'] });
   }
-  if (refs.teamId) {
-    const [team] = await db().select({ id: teams.id }).from(teams).where(and(eq(teams.id, refs.teamId), eq(teams.orgId, ctx.orgId), isNull(teams.deletedAt))).limit(1);
-    if (!team) throw new ValidationError('Team is invalid', { teamId: ['Unknown team'] });
+  if (refs.teamId && !(await isOrgTeam(ctx, refs.teamId))) {
+    throw new ValidationError('Team is invalid', { teamId: ['Unknown team'] });
   }
   if (refs.researchAreaId) {
     const [area] = await db().select({ id: researchAreas.id }).from(researchAreas).where(and(eq(researchAreas.id, refs.researchAreaId), eq(researchAreas.orgId, ctx.orgId))).limit(1);

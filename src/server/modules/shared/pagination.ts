@@ -1,5 +1,6 @@
 import 'server-only';
 import { isReasonableInstant } from '@/domain/dates';
+import { isUuid } from '@/domain/identifiers';
 
 export interface PageMeta {
   page: number;
@@ -29,7 +30,7 @@ export function encodeCursor(occurredAt: Date, id: string): string {
 export function decodeCursor(cursor: string): { occurredAt: Date; id: string } | null {
   try {
     const [iso, id] = Buffer.from(cursor, 'base64url').toString('utf8').split('|');
-    if (!iso || !id) return null;
+    if (!iso || !id || !isUuid(id)) return null;
     const occurredAt = new Date(iso);
     return isReasonableInstant(occurredAt) ? { occurredAt, id } : null;
   } catch {

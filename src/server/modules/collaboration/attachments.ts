@@ -1,11 +1,11 @@
 import 'server-only';
-import { and, desc, eq, isNull, sum } from 'drizzle-orm';
+import { and, desc, eq, isNull, sql, sum } from 'drizzle-orm';
 import { ConflictError, ForbiddenError, NotFoundError, PayloadTooLargeError, ValidationError } from '@/domain/errors';
 import { MAX_DESCRIPTION_CHARS, normalizeContentType, normalizeFileName } from '@/domain/files';
 import { canDeleteAttachment } from '@/domain/permissions';
 import { actorOf, type AuthContext } from '../../auth/context';
 import { authorize } from '../../authz';
-import { db } from '../../db/client';
+import { db, type Executor } from '../../db/client';
 import { attachments, users } from '../../db/schema';
 import { env } from '../../env';
 import { RateLimiter } from '../../http/rate-limit';
@@ -46,10 +46,18 @@ function isAllowedType(contentType: string): boolean {
 /** 60 uploads per hour per person. */
 const uploadLimiter = new RateLimiter(60, 60 * 60 * 1000, 'You are uploading files faster than allowed. Try again later.');
 
-/** Checked before an upload body is read, so a refused upload costs nothing. */
-export async function assertCanUpload(ctx: AuthContext, entityId: string): Promise<void> {
+async function assertUploadTarget(ctx: AuthContext, entityId: string): Promise<void> {
   authorize(ctx, 'attachment:upload');
   await getEntityRef(ctx, entityId);
+}
+
+/**
+ * Checked before an upload body is read, so a refused upload costs nothing.
+ * This is where an upload counts against the hourly limit: call it once per
+ * upload, before `createAttachment`.
+ */
+export async function assertCanUpload(ctx: AuthContext, entityId: string): Promise<void> {
+  await assertUploadTarget(ctx, entityId);
   uploadLimiter.consume(ctx.userId);
 }
 
@@ -57,8 +65,8 @@ export async function assertCanUpload(ctx: AuthContext, entityId: string): Promi
  * Bytes an organization stores, deleted attachments included: deletion is a
  * soft delete, so their files stay on disk for the record.
  */
-async function storedBytes(orgId: string): Promise<number> {
-  const [row] = await db().select({ total: sum(attachments.sizeBytes) }).from(attachments).where(eq(attachments.orgId, orgId));
+async function storedBytes(executor: Executor, orgId: string): Promise<number> {
+  const [row] = await executor.select({ total: sum(attachments.sizeBytes) }).from(attachments).where(eq(attachments.orgId, orgId));
   return Number(row?.total ?? 0);
 }
 
@@ -102,7 +110,7 @@ export async function createAttachment(
   entityId: string,
   file: { fileName: string; contentType: string; data: Uint8Array; description?: string | null },
 ): Promise<{ id: string }> {
-  await assertCanUpload(ctx, entityId);
+  await assertUploadTarget(ctx, entityId);
 
   if (file.data.byteLength === 0) throw new ValidationError('The file is empty', { file: ['Choose a non-empty file'] });
   if (file.data.byteLength > env().MAX_UPLOAD_BYTES) throw new PayloadTooLargeError(env().MAX_UPLOAD_BYTES);
@@ -115,16 +123,21 @@ export async function createAttachment(
   }
 
   const quota = env().MAX_ORG_STORAGE_BYTES;
-  const used = await storedBytes(ctx.orgId);
-  if (used + file.data.byteLength > quota) {
-    throw new ConflictError('This organization has used its file storage allowance', { limitBytes: quota, usedBytes: used });
-  }
-
   const storageKey = newStorageKey(ctx.orgId);
-  await storage().put(storageKey, file.data, contentType);
+  let stored = false;
 
   try {
     return await db().transaction(async (tx) => {
+      // Uploads to one organization pass the quota check one at a time, so
+      // simultaneous uploads cannot each fit under the same total.
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`attachment-quota:${ctx.orgId}`}))`);
+      const used = await storedBytes(tx, ctx.orgId);
+      if (used + file.data.byteLength > quota) {
+        throw new ConflictError('This organization has used its file storage allowance', { limitBytes: quota, usedBytes: used });
+      }
+
+      stored = true; // from here on a failure also removes a partly written file
+      await storage().put(storageKey, file.data, contentType);
       const [row] = await tx
         .insert(attachments)
         .values({
@@ -149,7 +162,7 @@ export async function createAttachment(
       return row!;
     });
   } catch (err) {
-    await storage().delete(storageKey).catch(() => {});
+    if (stored) await storage().delete(storageKey).catch(() => {});
     throw err;
   }
 }

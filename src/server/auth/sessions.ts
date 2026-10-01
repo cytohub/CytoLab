@@ -1,7 +1,7 @@
 import 'server-only';
 import { createHash, randomBytes } from 'node:crypto';
 import { and, eq, gt, isNull } from 'drizzle-orm';
-import { db } from '../db/client';
+import { db, type Executor } from '../db/client';
 import { organizations, orgMemberships, sessions, teamMemberships, teams, users } from '../db/schema';
 import {
   SESSION_TTL_MS,
@@ -48,8 +48,8 @@ export async function createSession(userId: string, orgId: string, meta: Request
 }
 
 /** Revokes a live session; returns who it belonged to, or null if it was already gone. */
-export async function revokeSession(token: string): Promise<{ id: string; userId: string; orgId: string } | null> {
-  const [row] = await db()
+export async function revokeSession(token: string, executor: Executor = db()): Promise<{ id: string; userId: string; orgId: string } | null> {
+  const [row] = await executor
     .update(sessions)
     .set({ revokedAt: new Date() })
     .where(and(eq(sessions.tokenHash, hashToken(token)), isNull(sessions.revokedAt)))

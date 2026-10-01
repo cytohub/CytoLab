@@ -67,9 +67,16 @@ export async function verifyPassword(password: string, stored: string): Promise<
   return actual.length === expected.length && timingSafeEqual(actual, expected);
 }
 
-/** Hash used to spend equal time when an account does not exist (prevents user enumeration). */
+/**
+ * Hash used to spend equal time when an account does not exist (prevents user
+ * enumeration). A failed attempt (sign-in busy) is not kept, or every later
+ * sign-in to an unknown email would fail the same way.
+ */
 let dummyHash: Promise<string> | undefined;
 export function timingSafeDummyHash(): Promise<string> {
-  dummyHash ??= hashPassword(randomBytes(12).toString('hex'));
+  dummyHash ??= hashPassword(randomBytes(12).toString('hex')).catch((err: unknown) => {
+    dummyHash = undefined;
+    throw err;
+  });
   return dummyHash;
 }
