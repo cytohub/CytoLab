@@ -19,6 +19,9 @@ export default defineConfig({
     ? undefined
     : {
         command: `pnpm exec next start -p ${port}`,
+        // `next start` is production mode, where demo workspaces open only on a
+        // declared public demo; the smoke tests sign in to the seeded one.
+        env: { PUBLIC_DEMO: 'true' },
         url: baseURL,
         reuseExistingServer: true,
         timeout: 120_000,

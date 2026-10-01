@@ -7,7 +7,8 @@ services:
       POSTGRES_PASSWORD: cytolab
       POSTGRES_DB: cytolab
     ports:
-      - '5432:5432'
+      # Local only: the credentials below are public defaults.
+      - '127.0.0.1:5432:5432'
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./scripts/docker/init-test-db.sql:/docker-entrypoint-initdb.d/10-init-test-db.sql:ro

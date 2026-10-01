@@ -9,7 +9,7 @@ import { createSession, revokeSession, type RequestMeta } from '../../auth/sessi
 import { recordSystemAudit } from '../../platform/events';
 import { ipBucket } from '../../http/client-ip';
 import { loginAccountLimiter, loginAddressLimiter, loginLimiter } from '../../http/rate-limit';
-import { env } from '../../env';
+import { demoWorkspacesOpen, env } from '../../env';
 import { toUserSummary, type UserSummary } from '../shared/presenters';
 
 export interface LoginResult {
@@ -37,6 +37,7 @@ export async function login(input: LoginInput, meta: RequestMeta): Promise<Login
       status: users.status,
       orgId: orgMemberships.orgId,
       membershipStatus: orgMemberships.status,
+      orgIsDemo: organizations.isDemo,
     })
     .from(users)
     .innerJoin(orgMemberships, eq(orgMemberships.userId, users.id))
@@ -50,7 +51,8 @@ export async function login(input: LoginInput, meta: RequestMeta): Promise<Login
   const hash = account?.passwordHash ?? (await timingSafeDummyHash());
   const passwordOk = await verifyPassword(input.password, hash);
 
-  if (!account || !passwordOk || account.status !== 'active' || account.membershipStatus !== 'active') {
+  const demoClosed = account?.orgIsDemo === true && !demoWorkspacesOpen();
+  if (!account || !passwordOk || account.status !== 'active' || account.membershipStatus !== 'active' || demoClosed) {
     await db().transaction((tx) =>
       recordSystemAudit(tx, {
         orgId: account?.orgId ?? null,
@@ -58,7 +60,7 @@ export async function login(input: LoginInput, meta: RequestMeta): Promise<Login
         action: 'login',
         resourceType: 'session',
         resourceId: null,
-        metadata: { outcome: 'failed', email: input.email, ip: meta.ip },
+        metadata: { outcome: 'failed', email: input.email, ip: meta.ip, ...(demoClosed ? { reason: 'demo_workspace_closed' } : {}) },
       }),
     );
     throw new UnauthorizedError('Incorrect email or password');
@@ -107,7 +109,7 @@ export interface DemoAccount {
 
 /** Demo sign-in options shown on the login page when DEMO_MODE is on. */
 export async function listDemoAccounts(): Promise<{ enabled: boolean; password: string | null; accounts: DemoAccount[] }> {
-  if (!env().DEMO_MODE) return { enabled: false, password: null, accounts: [] };
+  if (!env().DEMO_MODE || !demoWorkspacesOpen()) return { enabled: false, password: null, accounts: [] };
 
   const rows = await db()
     .select({

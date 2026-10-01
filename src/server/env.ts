@@ -56,6 +56,16 @@ export function env(): Env {
 }
 
 /** For tests that change process.env between suites. */
+/**
+ * Demo workspaces carry accounts with a published password. Outside a declared
+ * public demo, production treats them as closed: no listed accounts, no
+ * sign-in, no sessions, so seeded demo users left in a real database are inert.
+ */
+export function demoWorkspacesOpen(): boolean {
+  const { NODE_ENV, PUBLIC_DEMO } = env();
+  return NODE_ENV !== 'production' || PUBLIC_DEMO;
+}
+
 export function resetEnvCache(): void {
   cached = undefined;
 }
