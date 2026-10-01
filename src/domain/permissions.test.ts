@@ -2,6 +2,9 @@ import { describe, expect, it } from 'vitest';
 import {
   canDeleteAttachment,
   canDeleteProject,
+  canModifyAuthoredContent,
+  canReassignExperiment,
+  canReassignProject,
   canEditExperiment,
   canEditProject,
   permissionsForRole,
@@ -90,5 +93,31 @@ describe('attachment policies', () => {
 
   it('never lets viewers delete, even their own past uploads', () => {
     expect(canDeleteAttachment(actor({ role: 'viewer', userId: 'u1' }), 'u1')).toBe(false);
+  });
+});
+
+describe('reassignment policies', () => {
+  const project = { ownerId: 'owner', teamId: 'teamA' };
+  const experiment = { researcherId: 'r1', createdBy: 'c1', teamId: 'teamA' };
+
+  it('lets the owner or an org-wide editor hand a project over, not a team member', () => {
+    expect(canReassignProject(actor({ role: 'scientist', userId: 'owner' }), project)).toBe(true);
+    expect(canReassignProject(actor({ role: 'lab_manager', userId: 'x' }), project)).toBe(true);
+    expect(canReassignProject(actor({ role: 'scientist', userId: 'x', teamIds: ['teamA'] }), project)).toBe(false);
+  });
+
+  it('lets the researcher, creator or an org-wide editor reassign an experiment, not a team member', () => {
+    expect(canReassignExperiment(actor({ role: 'researcher', userId: 'r1' }), experiment)).toBe(true);
+    expect(canReassignExperiment(actor({ role: 'researcher', userId: 'c1' }), experiment)).toBe(true);
+    expect(canReassignExperiment(actor({ role: 'admin', userId: 'x' }), experiment)).toBe(true);
+    expect(canReassignExperiment(actor({ role: 'scientist', userId: 'x', teamIds: ['teamA'] }), experiment)).toBe(false);
+  });
+});
+
+describe('authored content', () => {
+  it('drops the author path once the role can no longer write', () => {
+    expect(canModifyAuthoredContent(actor({ role: 'researcher', userId: 'u1' }), 'u1', 'comment:create', 'comment:moderate')).toBe(true);
+    expect(canModifyAuthoredContent(actor({ role: 'viewer', userId: 'u1' }), 'u1', 'comment:create', 'comment:moderate')).toBe(false);
+    expect(canModifyAuthoredContent(actor({ role: 'lab_manager', userId: 'u2' }), 'u1', 'comment:create', 'comment:moderate')).toBe(true);
   });
 });
