@@ -4,7 +4,7 @@ import { todayIn } from '@/domain/dates';
 import { diffFields, hasChanges } from '@/domain/diff';
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '@/domain/errors';
 import { EXPERIMENT_STATUS_META } from '@/domain/labels';
-import { canDeleteExperiment, canEditExperiment } from '@/domain/permissions';
+import { canDeleteExperiment, canEditExperiment, canReassignExperiment } from '@/domain/permissions';
 import type { CreateExperimentData, UpdateExperimentData } from '@/domain/schemas/experiments';
 import { canTransitionExperiment, experimentTransitionEffects } from '@/domain/workflows';
 import { actorOf, type AuthContext } from '../../auth/context';
@@ -158,6 +158,13 @@ export async function createExperiment(ctx: AuthContext, input: CreateExperiment
 export async function updateExperiment(ctx: AuthContext, experimentId: string, input: UpdateExperimentData): Promise<ExperimentDetail> {
   const current = await loadEditableExperiment(ctx, experimentId);
   assertCanEdit(ctx, current);
+  if (
+    input.researcherId !== undefined &&
+    input.researcherId !== current.researcherId &&
+    !canReassignExperiment(actorOf(ctx), { researcherId: current.researcherId, createdBy: current.createdBy, teamId: current.teamId })
+  ) {
+    throw new ForbiddenError('Only the assigned researcher, the creator, a lab manager or an admin can reassign this experiment');
+  }
   if (input.expectedVersion !== undefined && input.expectedVersion !== current.version) {
     throw new ConflictError('This experiment was changed by someone else. Reload and try again.', { currentVersion: current.version });
   }

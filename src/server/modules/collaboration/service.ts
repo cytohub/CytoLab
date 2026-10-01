@@ -4,12 +4,12 @@ import { diffFields, hasChanges, removedFields } from '@/domain/diff';
 import { LINK_TYPE_LABELS } from '@/domain/labels';
 import type { LinkType } from '@/domain/enums';
 import { BadRequestError, ForbiddenError, NotFoundError, ValidationError } from '@/domain/errors';
-import { canModifyAuthoredContent } from '@/domain/permissions';
+import { canEditExperiment, canEditProject, canModifyAuthoredContent, roleHasPermission } from '@/domain/permissions';
 import type { CreateCommentInput, CreateLinkInput, CreateTagInput } from '@/domain/schemas/platform';
 import { actorOf, type AuthContext } from '../../auth/context';
 import { authorize } from '../../authz';
 import { db } from '../../db/client';
-import { comments, entityLinks, entityTags, tags } from '../../db/schema';
+import { comments, entityLinks, entityTags, experiments, projects, tags } from '../../db/schema';
 import { getEntityRef, getEntityRefs, type EntityRef } from '../../platform/entities';
 import { recordEvent } from '../../platform/events';
 import { indexExperiments } from '../search/indexers';
@@ -56,7 +56,7 @@ export async function listComments(ctx: AuthContext, entityId: string): Promise<
     parentId: row.parentId,
     createdAt: row.createdAt.toISOString(),
     editedAt: row.editedAt?.toISOString() ?? null,
-    canModify: canModifyAuthoredContent(actorOf(ctx), row.authorId, 'comment:moderate'),
+    canModify: canModifyAuthoredContent(actorOf(ctx), row.authorId, 'comment:create', 'comment:moderate'),
   }));
 }
 
@@ -85,6 +85,7 @@ export async function createComment(ctx: AuthContext, entityId: string, input: C
 export async function updateComment(ctx: AuthContext, commentId: string, body: string): Promise<{ id: string }> {
   const [current] = await db().select({ id: comments.id, authorId: comments.authorId, entityId: comments.entityId, body: comments.body }).from(comments).where(and(eq(comments.id, commentId), eq(comments.orgId, ctx.orgId), isNull(comments.deletedAt))).limit(1);
   if (!current) throw new NotFoundError('Comment');
+  authorize(ctx, 'comment:create');
   if (current.authorId !== ctx.userId) throw new ForbiddenError('You can only edit your own comments');
   const changes = diffFields({ body: current.body }, { body });
   await db().transaction(async (tx) => {
@@ -99,11 +100,39 @@ export async function updateComment(ctx: AuthContext, commentId: string, body: s
 export async function deleteComment(ctx: AuthContext, commentId: string): Promise<void> {
   const [current] = await db().select({ id: comments.id, authorId: comments.authorId, entityId: comments.entityId }).from(comments).where(and(eq(comments.id, commentId), eq(comments.orgId, ctx.orgId), isNull(comments.deletedAt))).limit(1);
   if (!current) throw new NotFoundError('Comment');
-  if (!canModifyAuthoredContent(actorOf(ctx), current.authorId, 'comment:moderate')) throw new ForbiddenError('You can only delete your own comments');
+  if (!canModifyAuthoredContent(actorOf(ctx), current.authorId, 'comment:create', 'comment:moderate')) throw new ForbiddenError('You can only delete your own comments');
   await db().transaction(async (tx) => {
     await tx.update(comments).set({ deletedAt: new Date() }).where(eq(comments.id, commentId));
     await recordEvent(tx, ctx, { action: 'comment.deleted', entityId: current.entityId, projectId: null, activity: false, audit: { action: 'delete', resourceType: 'comment', resourceId: commentId, changes: null } });
   });
+}
+
+// --- Record edit rights ---------------------------------------------------
+
+/**
+ * Whether the actor may change a record's metadata (tags, outgoing links): the
+ * same rights as editing the record itself. Samples have no owner, so the
+ * sample permission decides.
+ */
+async function canEditEntity(ctx: AuthContext, entity: EntityRef): Promise<boolean> {
+  const actor = actorOf(ctx);
+  if (entity.type === 'project') {
+    const [row] = await db().select({ ownerId: projects.ownerId, teamId: projects.teamId }).from(projects).where(and(eq(projects.id, entity.id), eq(projects.orgId, ctx.orgId))).limit(1);
+    return row !== undefined && canEditProject(actor, row);
+  }
+  if (entity.type === 'experiment') {
+    const [row] = await db()
+      .select({ researcherId: experiments.researcherId, createdBy: experiments.createdBy, teamId: experiments.teamId })
+      .from(experiments)
+      .where(and(eq(experiments.id, entity.id), eq(experiments.orgId, ctx.orgId)))
+      .limit(1);
+    return row !== undefined && canEditExperiment(actor, row);
+  }
+  return roleHasPermission(actor.role, 'sample:update');
+}
+
+async function assertCanEditEntity(ctx: AuthContext, entity: EntityRef): Promise<void> {
+  if (!(await canEditEntity(ctx, entity))) throw new ForbiddenError(`You can only change ${entity.displayId} if you can edit it`);
 }
 
 // --- Tags ------------------------------------------------------------------
@@ -131,6 +160,7 @@ export async function createTag(ctx: AuthContext, input: CreateTagInput): Promis
 export async function setEntityTags(ctx: AuthContext, entityId: string, tagIds: string[]): Promise<TagSummary[]> {
   authorize(ctx, 'tag:apply');
   const entity = await getEntityRef(ctx, entityId);
+  await assertCanEditEntity(ctx, entity);
   const unique = [...new Set(tagIds)];
   if (unique.length > 0) {
     const valid = await db().select({ id: tags.id }).from(tags).where(and(eq(tags.orgId, ctx.orgId)));
@@ -200,6 +230,7 @@ export async function createLink(ctx: AuthContext, sourceId: string, input: Crea
   authorize(ctx, 'link:manage');
   if (sourceId === input.targetId) throw new BadRequestError('An object cannot be linked to itself');
   const [source, target] = await Promise.all([getEntityRef(ctx, sourceId), getEntityRef(ctx, input.targetId)]);
+  await assertCanEditEntity(ctx, source);
 
   return db().transaction(async (tx) => {
     try {
@@ -221,6 +252,11 @@ export async function createLink(ctx: AuthContext, sourceId: string, input: Crea
 
 export async function deleteLink(ctx: AuthContext, linkId: string): Promise<void> {
   authorize(ctx, 'link:manage');
+  const [link] = await db().select({ sourceId: entityLinks.sourceId, createdBy: entityLinks.createdBy }).from(entityLinks).where(and(eq(entityLinks.id, linkId), eq(entityLinks.orgId, ctx.orgId))).limit(1);
+  if (!link) throw new NotFoundError('Link');
+  // The person who made the link, or anyone who can edit the record it starts from.
+  if (link.createdBy !== ctx.userId) await assertCanEditEntity(ctx, await getEntityRef(ctx, link.sourceId, { includeDeleted: true }));
+
   await db().transaction(async (tx) => {
     const [removed] = await tx
       .delete(entityLinks)

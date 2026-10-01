@@ -5,7 +5,7 @@ import { diffFields, hasChanges } from '@/domain/diff';
 import type { Priority, ProjectStatus } from '@/domain/enums';
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '@/domain/errors';
 import { EXPERIMENT_STATUS_META, PRIORITY_META, PROJECT_STATUS_META } from '@/domain/labels';
-import { canDeleteProject, canEditProject } from '@/domain/permissions';
+import { canDeleteProject, canEditProject, canReassignProject } from '@/domain/permissions';
 import type { HealthStatus, ProjectHealth, ProjectProgress } from '@/domain/project-metrics';
 import { isUuid } from '@/domain/identifiers';
 import { HEALTH_META } from '@/domain/project-metrics';
@@ -337,6 +337,9 @@ export async function updateProject(ctx: AuthContext, ref: string, input: Update
   if (input.expectedVersion !== undefined && input.expectedVersion !== current.version) {
     throw new ConflictError('This project was changed by someone else. Reload and try again.', { currentVersion: current.version });
   }
+  if (input.ownerId !== undefined && input.ownerId !== current.ownerId && !canReassignProject(actorOf(ctx), { ownerId: current.ownerId, teamId: current.teamId })) {
+    throw new ForbiddenError('Only the project owner, a lab manager or an admin can change its owner');
+  }
   await assertRefsExist(ctx, input);
 
   const { expectedVersion: _v, ...patch } = input;
@@ -411,6 +414,25 @@ export async function deleteProject(ctx: AuthContext, ref: string): Promise<void
     const now = new Date();
     await tx.update(projects).set({ deletedAt: now, updatedBy: ctx.userId, updatedAt: now }).where(eq(projects.id, current.id));
     await setEntityDeleted(tx, current.id, now);
+
+    // Its experiments (all closed, checked above) go with it; left live, they
+    // stayed listed and editable and could be reopened inside a deleted project.
+    const removed = await tx
+      .update(experiments)
+      .set({ deletedAt: now, updatedBy: ctx.userId, updatedAt: now })
+      .where(and(eq(experiments.orgId, ctx.orgId), eq(experiments.projectId, current.id), isNull(experiments.deletedAt)))
+      .returning({ id: experiments.id });
+    for (const experiment of removed) {
+      await setEntityDeleted(tx, experiment.id, now);
+      await recordEvent(tx, ctx, {
+        action: 'experiment.deleted_with_project',
+        entityId: experiment.id,
+        projectId: current.id,
+        activity: false,
+        audit: { action: 'delete', resourceType: 'experiment', resourceId: experiment.id, changes: null },
+      });
+    }
+    if (removed.length > 0) await indexExperiments(tx, ctx.orgId, removed.map((e) => e.id));
     await recordEvent(tx, ctx, {
       action: 'project.deleted',
       entityId: current.id,

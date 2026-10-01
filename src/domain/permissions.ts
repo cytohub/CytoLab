@@ -106,6 +106,14 @@ export function canDeleteProject(actor: Actor, project: ProjectPolicyTarget): bo
   return ORG_WIDE_EDITORS.has(actor.role) || project.ownerId === actor.userId;
 }
 
+/**
+ * Handing a project to a new owner passes on the right to delete it, so it takes
+ * the same standing as deleting: the current owner or an org-wide editor.
+ */
+export function canReassignProject(actor: Actor, project: ProjectPolicyTarget): boolean {
+  return canEditProject(actor, project) && (ORG_WIDE_EDITORS.has(actor.role) || project.ownerId === actor.userId);
+}
+
 /** Milestones follow project edit rights, plus the milestone permission itself. */
 export function canManageMilestones(actor: Actor, project: ProjectPolicyTarget): boolean {
   return roleHasPermission(actor.role, 'milestone:manage') && canEditProject(actor, project);
@@ -137,6 +145,14 @@ export function canDeleteExperiment(actor: Actor, experiment: ExperimentPolicyTa
   );
 }
 
+/** Reassigning an experiment passes on its delete right, so it needs the standing to delete. */
+export function canReassignExperiment(actor: Actor, experiment: ExperimentPolicyTarget): boolean {
+  return (
+    canEditExperiment(actor, experiment) &&
+    (ORG_WIDE_EDITORS.has(actor.role) || experiment.researcherId === actor.userId || experiment.createdBy === actor.userId)
+  );
+}
+
 /**
  * Uploaders delete their own files; lab managers and admins delete any. Holding
  * `attachment:delete` alone is not enough, since every contributor role has it.
@@ -146,6 +162,11 @@ export function canDeleteAttachment(actor: Actor, uploadedBy: string | null): bo
   return ORG_WIDE_EDITORS.has(actor.role) || uploadedBy === actor.userId;
 }
 
-export function canModifyAuthoredContent(actor: Actor, authorId: string | null, moderatePermission: Permission): boolean {
-  return authorId === actor.userId || roleHasPermission(actor.role, moderatePermission);
+/**
+ * Authors change their own content while their role still allows writing it;
+ * moderators change anyone's. A member demoted to viewer loses the author path.
+ */
+export function canModifyAuthoredContent(actor: Actor, authorId: string | null, authorPermission: Permission, moderatePermission: Permission): boolean {
+  if (authorId === actor.userId && roleHasPermission(actor.role, authorPermission)) return true;
+  return roleHasPermission(actor.role, moderatePermission);
 }
