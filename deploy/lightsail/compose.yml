@@ -1,0 +1,67 @@
+# CytoLab on a single server (AWS Lightsail): the app, PostgreSQL, and Caddy
+# for HTTPS. Only Caddy is reachable from outside; the app and the database
+# listen on the private compose network. See README.md in this folder.
+name: cytolab
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: cytolab
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: cytolab
+      # Read by initdb/01-app-role.sh on the database's first start.
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD:?Set APP_DB_PASSWORD in .env}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+      - ./initdb:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U cytolab -d cytolab']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  web:
+    build:
+      context: ../..
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      # The app runs as a role that can read and write rows but cannot change
+      # the schema or rewrite the audit log. Migrations and the nightly reset
+      # run as the owner and grant that role its access again.
+      DATABASE_URL: postgres://cytolab_app:${APP_DB_PASSWORD}@db:5432/cytolab
+      MIGRATION_DATABASE_URL: postgres://cytolab:${POSTGRES_PASSWORD}@db:5432/cytolab
+      APP_DB_ROLE: cytolab_app
+      APP_URL: https://${DOMAIN:?Set DOMAIN in .env}
+      DEMO_MODE: ${DEMO_MODE:-true}
+      PUBLIC_DEMO: ${PUBLIC_DEMO:-true}
+      # Caddy overwrites this header with the visitor's address, and nothing
+      # else can reach the app, so rate limits can trust it.
+      CLIENT_IP_HEADER: x-real-ip
+    volumes:
+      - uploads:/app/.data/uploads
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    depends_on:
+      - web
+    environment:
+      DOMAIN: ${DOMAIN}
+    ports:
+      - '80:80'
+      - '443:443'
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+
+volumes:
+  db-data:
+  uploads:
+  caddy-data:
+  caddy-config:

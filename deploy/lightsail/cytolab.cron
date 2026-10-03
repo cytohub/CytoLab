@@ -1,0 +1,9 @@
+# CytoLab scheduled jobs, in UTC (Lightsail's Ubuntu images use UTC).
+# Install as the ubuntu user with: crontab ~/cytolab/deploy/lightsail/cytolab.cron
+# (this replaces that user's crontab).
+
+# 04:00 rebuild the public demo with fresh synthetic data.
+0 4 * * * cd /home/ubuntu/cytolab/deploy/lightsail && docker compose run --rm -T web pnpm db:reset >> /home/ubuntu/cytolab-jobs.log 2>&1
+
+# 04:30 send needs-attention notifications (at most one per experiment per day).
+30 4 * * * cd /home/ubuntu/cytolab/deploy/lightsail && docker compose run --rm -T web pnpm jobs:attention >> /home/ubuntu/cytolab-jobs.log 2>&1

@@ -11,6 +11,9 @@ This guide puts CytoLab on `https://cytolab.ai` as a **public demo**:
 All data in the demo is synthetic. The sign-in page and the in-app banner say
 so, and the demo must never be presented as real scientific findings.
 
+To host it on one AWS Lightsail server with the domain in Route 53 instead of
+Railway, follow [`deploy/lightsail/README.md`](deploy/lightsail/README.md).
+
 ## How it fits together
 
 One Railway project with four services:
