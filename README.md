@@ -83,7 +83,9 @@ Integration tests use `DATABASE_URL_TEST` (default
 The `Dockerfile` builds one image that serves the app and runs the database
 scripts. [`DEPLOY.md`](DEPLOY.md) walks through hosting the public demo on
 Railway at `cytolab.ai`: uploads and account changes switched off, per-visitor
-write limits, and a nightly reset.
+write limits, and a nightly reset. To run the same demo on a single AWS
+Lightsail server with a Route 53 domain, follow
+[`deploy/lightsail/README.md`](deploy/lightsail/README.md).
 
 ## Project structure
 
