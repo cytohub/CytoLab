@@ -32,7 +32,17 @@ describe('assertSameOrigin', () => {
   });
 
   it('compares against the forwarded host when the proxy rewrites Host', () => {
-    const req = request('POST', { host: '10.0.0.5:8080', 'x-forwarded-host': 'www.cytolab.ai', origin: 'https://www.cytolab.ai' });
+    const req = request('POST', { host: '10.0.0.5:8080', 'x-forwarded-host': 'www.cytolab.ai', 'x-forwarded-proto': 'https', origin: 'https://www.cytolab.ai' });
+    expect(() => assertSameOrigin(req)).not.toThrow();
+  });
+
+  it('rejects a page on the plain-http address of an https site', () => {
+    const req = request('POST', { host: 'cytolab.ai', 'x-forwarded-proto': 'https', origin: 'http://cytolab.ai', cookie: 'cytolab_session=token' });
+    expect(() => assertSameOrigin(req)).toThrow(ForbiddenError);
+  });
+
+  it('accepts a plain-http local server reached directly', () => {
+    const req = request('POST', { host: '127.0.0.1:3000', origin: 'http://127.0.0.1:3000' }, 'http://127.0.0.1:3000/api/v1/tags');
     expect(() => assertSameOrigin(req)).not.toThrow();
   });
 
@@ -118,10 +128,53 @@ describe('readBodyCapped', () => {
     const req = new Request('http://localhost/x', { method: 'POST', body: 'x'.repeat(10), headers: { 'content-length': '5000' } });
     await expect(readBodyCapped(req, 1_000)).rejects.toBeInstanceOf(PayloadTooLargeError);
   });
+});
 
-  it('applies to JSON bodies sent without Content-Length', async () => {
-    const { req } = chunkedRequest(2_000, 1_024); // 2 MB against the 1 MB cap
-    await expect(parseJson(req as never, z.object({}))).rejects.toBeInstanceOf(PayloadTooLargeError);
+describe('parseJson', () => {
+  beforeEach(() => {
+    vi.stubEnv('DATABASE_URL', 'postgres://user:pass@localhost:5432/unit');
+    resetEnvCache();
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    resetEnvCache();
+  });
+
+  function jsonRequest(body: string | ReadableStream<Uint8Array>, contentType = 'application/json') {
+    return new Request('http://localhost/api/v1/tags', { method: 'POST', body, headers: { 'content-type': contentType }, duplex: 'half' } as RequestInit);
+  }
+  /** A chunked body (no Content-Length) of `kib` KiB. */
+  function chunked(kib: number) {
+    let sent = 0;
+    return new ReadableStream<Uint8Array>({
+      pull(controller) {
+        if (sent++ >= kib) return controller.close();
+        controller.enqueue(new Uint8Array(1_024).fill(32));
+      },
+    });
+  }
+
+  it('applies the cap to bodies sent without Content-Length', async () => {
+    await expect(parseJson(jsonRequest(chunked(2_048)) as never, z.object({}))).rejects.toBeInstanceOf(PayloadTooLargeError); // 2 MB against 1 MB
+  });
+
+  it('keeps bodies to 32 KB in a public demo', async () => {
+    const schema = z.object({ notes: z.string() });
+    const body = (kib: number) => JSON.stringify({ notes: 'a'.repeat(kib * 1_024) });
+    expect(await parseJson(jsonRequest(body(40)) as never, schema)).toMatchObject({ notes: expect.any(String) });
+
+    vi.stubEnv('PUBLIC_DEMO', 'true');
+    resetEnvCache();
+    await expect(parseJson(jsonRequest(body(40)) as never, schema)).rejects.toThrow('Payload exceeds the 32 KB limit');
+    expect(await parseJson(jsonRequest(body(30)) as never, schema)).toMatchObject({ notes: expect.any(String) });
+  });
+
+  it('accepts application/json with parameters, and nothing that merely mentions it', async () => {
+    const schema = z.object({ a: z.number() });
+    expect(await parseJson(jsonRequest('{"a":1}', 'Application/JSON; charset=utf-8') as never, schema)).toEqual({ a: 1 });
+    for (const type of ['text/plain;charset=application/json', 'text/plain; application/json', 'application/jsonp', '']) {
+      await expect(parseJson(jsonRequest('{"a":1}', type) as never, schema), type).rejects.toMatchObject({ status: 415 });
+    }
   });
 });
 

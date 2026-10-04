@@ -12,6 +12,9 @@ describe('upload file names', () => {
   it('drops control characters and unpaired surrogates', () => {
     expect(normalizeFileName('plate\u0000map\r\n.csv')).toBe('platemap.csv');
     expect(normalizeFileName('a\uD800b.txt')).toBe('ab.txt');
+    expect(normalizeFileName('invoice\u202Efdp.exe')).toBe('invoicefdp.exe');
+    expect(normalizeFileName('\u2066report\u2069\u200F\u0085.pdf')).toBe('report.pdf');
+    expect(normalizeFileName('Probenübersicht_é.xlsx')).toBe('Probenübersicht_é.xlsx');
     expect(normalizeFileName('\u0001\u0002')).toBe('upload');
   });
 });

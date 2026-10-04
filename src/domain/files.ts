@@ -39,9 +39,13 @@ export function normalizeContentType(raw: string): string {
 
 const LONE_SURROGATES = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g;
 
+// Bidirectional controls let a name display as something else ("invoice\u202Efdp.exe"
+// shows as "invoiceexe.pdf"), so they go with the other control characters.
+const CONTROL_CHARS = /[\u0000-\u001f\u007f-\u009f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/g;
+
 /** Control characters and unpaired surrogates removed; capped by code point so no pair is split. */
 export function normalizeFileName(raw: string): string {
-  const cleaned = raw.replace(/[\u0000-\u001f\u007f]/g, '').replace(LONE_SURROGATES, '').trim();
+  const cleaned = raw.replace(CONTROL_CHARS, '').replace(LONE_SURROGATES, '').trim();
   return Array.from(cleaned).slice(0, MAX_FILE_NAME_CHARS).join('') || 'upload';
 }
 

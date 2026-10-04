@@ -1,7 +1,8 @@
 import 'server-only';
-import { and, asc, eq, isNull, or } from 'drizzle-orm';
+import { and, asc, count, eq, isNull, or } from 'drizzle-orm';
 import { diffFields, hasChanges, removedFields } from '@/domain/diff';
 import { LINK_TYPE_LABELS } from '@/domain/labels';
+import { MAX_COMMENTS_PER_RECORD, MAX_LINKS_PER_RECORD } from '@/domain/limits';
 import type { LinkType } from '@/domain/enums';
 import { BadRequestError, ForbiddenError, NotFoundError, ValidationError } from '@/domain/errors';
 import { canEditExperiment, canEditProject, canModifyAuthoredContent, roleHasPermission } from '@/domain/permissions';
@@ -69,6 +70,9 @@ export async function createComment(ctx: AuthContext, entityId: string, input: C
     const [parent] = await db().select({ id: comments.id }).from(comments).where(and(eq(comments.id, input.parentId), eq(comments.entityId, entityId), isNull(comments.deletedAt))).limit(1);
     if (!parent) throw new ValidationError('Reply target is invalid', { parentId: ['Unknown comment'] });
   }
+
+  const [existing] = await db().select({ n: count() }).from(comments).where(and(eq(comments.entityId, entityId), isNull(comments.deletedAt)));
+  if ((existing?.n ?? 0) >= MAX_COMMENTS_PER_RECORD) throw new ValidationError(`A record can hold at most ${MAX_COMMENTS_PER_RECORD} comments`);
 
   return db().transaction(async (tx) => {
     const [row] = await tx.insert(comments).values({ orgId: ctx.orgId, entityId, parentId: input.parentId, authorId: ctx.userId, body: input.body }).returning({ id: comments.id });
@@ -234,6 +238,8 @@ export async function createLink(ctx: AuthContext, sourceId: string, input: Crea
   if (sourceId === input.targetId) throw new BadRequestError('An object cannot be linked to itself');
   const [source, target] = await Promise.all([getEntityRef(ctx, sourceId), getEntityRef(ctx, input.targetId)]);
   await assertCanEditEntity(ctx, source);
+  const [existing] = await db().select({ n: count() }).from(entityLinks).where(eq(entityLinks.sourceId, sourceId));
+  if ((existing?.n ?? 0) >= MAX_LINKS_PER_RECORD) throw new ValidationError(`A record can link to at most ${MAX_LINKS_PER_RECORD} others`);
 
   return db().transaction(async (tx) => {
     try {

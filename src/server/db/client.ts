@@ -22,6 +22,10 @@ export function db(): Database {
     max: env().NODE_ENV === 'test' ? 4 : 10,
     idle_timeout: 20,
     connect_timeout: 10,
+    // No request needs anywhere near this long; a runaway statement would
+    // otherwise hold one of the few pooled connections (and its locks) for good.
+    // Schema changes and the reset's drop run on their own connection.
+    connection: { statement_timeout: 15_000 },
     onnotice: () => {},
   });
   globals.__cytolabSql = sql;

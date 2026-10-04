@@ -76,7 +76,8 @@ export class RateLimitError extends AppError {
 
 export class PayloadTooLargeError extends AppError {
   constructor(limitBytes: number) {
-    super('payload_too_large', `Payload exceeds the ${Math.round(limitBytes / 1024 / 1024)} MB limit`, 413, { limitBytes });
+    const limit = limitBytes >= 1024 * 1024 ? `${Math.round(limitBytes / 1024 / 1024)} MB` : `${Math.round(limitBytes / 1024)} KB`;
+    super('payload_too_large', `Payload exceeds the ${limit} limit`, 413, { limitBytes });
   }
 }
 
