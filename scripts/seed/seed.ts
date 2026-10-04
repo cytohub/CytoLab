@@ -90,7 +90,7 @@ async function buildWorkspace(tx: Transaction) {
     usersByKey.set(person.key, { id, key: person.key, role: person.role });
   }
   const uid = (key: string) => usersByKey.get(key)!.id;
-  const admin = uid('sarah');
+  const admin = uid('rajib');
 
   // --- Teams --------------------------------------------------------------
   const teamIdByKey = new Map<string, string>();
@@ -633,9 +633,9 @@ function buildNotifications(
   teamMembers: (teamKey: string) => string[],
   out: Array<typeof s.notifications.$inferInsert>,
 ): void {
-  const sarah = usersByKey.get('sarah')!.id;
-  const priya = usersByKey.get('priya')!.id;
-  const recipients = ['sarah', 'priya', 'marcus', 'elena', 'kenji'];
+  const rajib = usersByKey.get('rajib')!.id;
+  const matthieu = usersByKey.get('matthieu')!.id;
+  const recipients = ['rajib', 'matthieu', 'soujanya', 'satish', 'frank'];
   const templates: Array<{ type: (typeof s.notifications.$inferInsert)['type']; title: string; body: string }> = [
     { type: 'attention', title: '3 experiments need attention', body: 'Overdue or blocked experiments in your projects.' },
     { type: 'milestone', title: 'Milestone due this week', body: 'A milestone in one of your projects is approaching its due date.' },
@@ -653,7 +653,7 @@ function buildNotifications(
         orgId,
         recipientId,
         type: template.type,
-        actorId: i % 2 === 0 ? sarah : priya,
+        actorId: i % 2 === 0 ? rajib : matthieu,
         title: template.title,
         body: template.body,
         readAt: i === 0 ? null : instant(-Math.floor(daysAgo), 12),
