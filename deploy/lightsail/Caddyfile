@@ -1,6 +1,20 @@
+{
+	# The admin API is only for live config reloads; restart the container instead.
+	admin off
+}
+
 # Caddy gets and renews the Let's Encrypt certificates for both names on its
 # own, once DNS points them at this server.
+(common) {
+	header {
+		# Also on redirects and on Caddy's own error pages, not only the app's responses.
+		Strict-Transport-Security "max-age=31536000"
+		-Server
+	}
+}
+
 {$DOMAIN} {
+	import common
 	encode zstd gzip
 	reverse_proxy web:3000 {
 		# The visitor's address, overwriting anything the client sent.
@@ -9,5 +23,6 @@
 }
 
 www.{$DOMAIN} {
+	import common
 	redir https://{$DOMAIN}{uri} permanent
 }

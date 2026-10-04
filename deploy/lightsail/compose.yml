@@ -1,7 +1,15 @@
 # CytoLab on a single server (AWS Lightsail): the app, PostgreSQL, and Caddy
-# for HTTPS. Only Caddy is reachable from outside; the app and the database
-# listen on the private compose network. See README.md in this folder.
+# for HTTPS. Only Caddy is reachable from outside. The app and the database
+# share a private network that Caddy is not on, so the proxy can reach the app
+# but never the database. See README.md in this folder.
 name: cytolab
+
+# Docker keeps container logs forever by default; cap them.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: 10m
+    max-file: '3'
 
 services:
   db:
@@ -21,6 +29,9 @@ services:
       interval: 5s
       timeout: 3s
       retries: 20
+    networks: [back]
+    security_opt: ['no-new-privileges:true']
+    logging: *logging
 
   web:
     build:
@@ -44,6 +55,11 @@ services:
       CLIENT_IP_HEADER: x-real-ip
     volumes:
       - uploads:/app/.data/uploads
+    networks: [front, back]
+    # The app runs as an unprivileged user and needs no Linux capabilities.
+    cap_drop: [ALL]
+    security_opt: ['no-new-privileges:true']
+    logging: *logging
 
   caddy:
     image: caddy:2
@@ -59,6 +75,13 @@ services:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data
       - caddy-config:/config
+    networks: [front]
+    security_opt: ['no-new-privileges:true']
+    logging: *logging
+
+networks:
+  front:
+  back:
 
 volumes:
   db-data:

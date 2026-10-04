@@ -10,7 +10,7 @@ The steps use `cytolab.ai`; use your own domain wherever it appears.
 ```
 visitor ──https──▶ Caddy (ports 80/443) ──▶ app (Next.js) ──▶ PostgreSQL
                      certificates            private network only
-cron 04:00 UTC ──▶ demo reset · 04:30 UTC ──▶ needs-attention scan
+cron 04:00 UTC ──▶ demo reset · 04:30 UTC ──▶ needs-attention scan · Sun 05:00 ──▶ security updates
 ```
 
 You need:
@@ -43,7 +43,7 @@ Open the `cytolab` instance, then **Networking**. Under **IPv4 Firewall**:
 
 | Application | Port | Note |
 | --- | --- | --- |
-| SSH | 22 | Already there. Use **Restrict to IP address** to allow only your own address. |
+| SSH | 22 | Already there. Use **Restrict to IP address** to allow only your own address, and tick **Allow Lightsail browser SSH/RDP** so **Connect using SSH** keeps working. |
 | HTTP | 80 | Add it. Let's Encrypt and the redirect to HTTPS use it. |
 | HTTPS | 443 | Add it. |
 
@@ -127,7 +127,7 @@ Answer `yes` when asked to trust github.com.
 
 ```sh
 cd ~/cytolab/deploy/lightsail
-cp .env.example .env
+(umask 077 && cp .env.example .env)   # readable only by you from the start
 sed -i "s/^POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=$(openssl rand -hex 24)/" .env
 sed -i "s/^APP_DB_PASSWORD=.*/APP_DB_PASSWORD=$(openssl rand -hex 24)/" .env
 chmod 600 .env
@@ -154,7 +154,7 @@ You should see these lines, then press Ctrl+C:
 ```
 ✔ Migrations applied
 ✔ Granted row access to cytolab_app
-✔ Seeded demo workspace: 7 projects, 132 experiments, 8 users, 420 activity events
+✔ Seeded demo workspace: 13 people (5 demo sign-ins), 6 teams, 18 experiment types
 ✓ Ready in …
 ```
 
@@ -182,11 +182,15 @@ crontab ~/cytolab/deploy/lightsail/cytolab.cron
 crontab -l
 ```
 
-These two jobs then run every day:
+These jobs then run on their own:
 
-- **04:00 UTC**: the demo is rebuilt with fresh synthetic data. Everyone is
-  signed out, and requests made during the few seconds it takes may fail.
-- **04:30 UTC**: needs-attention notifications are sent.
+- **04:00 UTC daily**: the demo is emptied again, removing whatever visitors
+  created. Everyone is signed out, and requests made during the few seconds it
+  takes may fail.
+- **04:30 UTC daily**: needs-attention notifications are sent.
+- **Sundays 05:00 UTC**: security updates. Fresh Caddy and PostgreSQL images
+  are pulled and the app is rebuilt on the latest Node base image, with about
+  10 seconds of downtime.
 
 Their output goes to `~/cytolab-jobs.log`. To run the reset now:
 
@@ -194,7 +198,20 @@ Their output goes to `~/cytolab-jobs.log`. To run the reset now:
 cd ~/cytolab/deploy/lightsail && docker compose run --rm -T web pnpm db:reset
 ```
 
-## 11. Turn on snapshots (optional)
+## 11. Limit who can issue certificates (optional)
+
+In Route 53, create a record on `cytolab.ai`: record name empty, type **CAA**,
+and two values, one per line:
+
+```
+0 issue "letsencrypt.org"
+0 issue "zerossl.com"
+```
+
+Caddy uses these two authorities; no other one may then issue a certificate
+for the domain.
+
+## 12. Turn on snapshots (optional)
 
 On the instance page, open **Snapshots** and turn on **Automatic snapshots**.
 The demo rebuilds itself every night, so this mainly saves you setting the
@@ -204,9 +221,14 @@ server up again.
 
 ```sh
 cd ~/cytolab && git pull
-cd deploy/lightsail && docker compose up -d --build
+cd deploy/lightsail
+docker compose pull --ignore-buildable && docker compose build --pull && docker compose up -d
 docker image prune -f
 ```
+
+Always run these from `deploy/lightsail`. The repository root has a different
+compose file for local development, and running `docker compose` there starts
+an unrelated database.
 
 The app is unavailable for about 10 seconds while it restarts. Migrations run
 on start.
