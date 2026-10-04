@@ -120,6 +120,12 @@ export async function indexExperimentsOfType(tx: Executor, orgId: string, typeId
   await indexExperiments(tx, orgId, rows.map((r) => r.id));
 }
 
+/** A project's live experiments, whose search subtitles embed the project code. */
+export async function indexExperimentsOfProject(tx: Executor, orgId: string, projectId: string): Promise<void> {
+  const rows = await tx.select({ id: experiments.id }).from(experiments).where(and(eq(experiments.orgId, orgId), eq(experiments.projectId, projectId), isNull(experiments.deletedAt)));
+  await indexExperiments(tx, orgId, rows.map((r) => r.id));
+}
+
 export async function reindexOrganization(tx: Executor, orgId: string): Promise<void> {
   await indexProjects(tx, orgId);
   await indexExperiments(tx, orgId);

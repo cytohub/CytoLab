@@ -160,12 +160,12 @@ export async function createExperiment(ctx: AuthContext, input: CreateExperiment
 export async function updateExperiment(ctx: AuthContext, experimentId: string, input: UpdateExperimentData): Promise<ExperimentDetail> {
   const current = await loadEditableExperiment(ctx, experimentId);
   assertCanEdit(ctx, current);
-  if (
-    input.researcherId !== undefined &&
-    input.researcherId !== current.researcherId &&
-    !canReassignExperiment(actorOf(ctx), { researcherId: current.researcherId, createdBy: current.createdBy, teamId: current.teamId })
-  ) {
-    throw new ForbiddenError('Only the assigned researcher, the creator, a lab manager or an admin can reassign this experiment');
+  // Moving an experiment into another project hands it to that project's owner,
+  // who can delete it along with the project, so it needs the same standing as
+  // reassigning the researcher.
+  const reassigning = changed(input.researcherId, current.researcherId) !== undefined || changed(input.projectId, current.projectId) !== undefined;
+  if (reassigning && !canReassignExperiment(actorOf(ctx), { researcherId: current.researcherId, createdBy: current.createdBy, teamId: current.teamId })) {
+    throw new ForbiddenError('Only the assigned researcher, the creator, a lab manager or an admin can reassign this experiment or move it to another project');
   }
   if (input.expectedVersion !== undefined && input.expectedVersion !== current.version) {
     throw new ConflictError('This experiment was changed by someone else. Reload and try again.', { currentVersion: current.version });

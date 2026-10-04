@@ -1,8 +1,9 @@
 import 'server-only';
-import { and, eq, isNull, max } from 'drizzle-orm';
+import { and, count, eq, isNull, max } from 'drizzle-orm';
 import { diffFields, hasChanges, removedFields, type FieldChanges } from '@/domain/diff';
 import { ForbiddenError, NotFoundError, ValidationError } from '@/domain/errors';
 import { formatSampleId } from '@/domain/identifiers';
+import { MAX_ENTRIES_PER_EXPERIMENT } from '@/domain/limits';
 import type {
   ConditionInput,
   ExperimentInputInput,
@@ -41,6 +42,22 @@ async function nextPosition(tx: Transaction, table: typeof experimentConditions 
   return (row?.maxPos ?? -1) + 1;
 }
 
+type EntryTable =
+  | typeof experimentConditions
+  | typeof experimentInputs
+  | typeof experimentProtocolSteps
+  | typeof experimentObservations
+  | typeof experimentResults
+  | typeof experimentSamples;
+
+/** Refuses a new entry once the experiment holds the most of its kind that a detail page loads. */
+async function assertRoomFor(tx: Transaction, table: EntryTable, experimentId: string, noun: string): Promise<void> {
+  const [row] = await tx.select({ n: count() }).from(table).where(eq(table.experimentId, experimentId));
+  if ((row?.n ?? 0) >= MAX_ENTRIES_PER_EXPERIMENT) {
+    throw new ValidationError(`An experiment can hold at most ${MAX_ENTRIES_PER_EXPERIMENT} ${noun}`);
+  }
+}
+
 /** Runs a sub-record mutation with edit authorization + activity bump, in one transaction. */
 async function withEditable<T>(ctx: AuthContext, experimentId: string, fn: (tx: Transaction, exp: EditableExperiment) => Promise<T>): Promise<T> {
   const experiment = await loadEditableExperiment(ctx, experimentId);
@@ -76,6 +93,7 @@ function auditItem(
 
 export function addCondition(ctx: AuthContext, experimentId: string, input: ConditionInput) {
   return withEditable(ctx, experimentId, async (tx, exp) => {
+    await assertRoomFor(tx, experimentConditions, experimentId, 'conditions');
     const [row] = await tx
       .insert(experimentConditions)
       .values({ orgId: ctx.orgId, experimentId, name: input.name, value: input.value, numericValue: parseNumeric(input.value), unit: input.unit ?? null, notes: input.notes ?? null, position: await nextPosition(tx, experimentConditions, experimentId), createdBy: ctx.userId })
@@ -114,6 +132,7 @@ export function deleteCondition(ctx: AuthContext, experimentId: string, itemId: 
 
 export function addInput(ctx: AuthContext, experimentId: string, input: ExperimentInputInput) {
   return withEditable(ctx, experimentId, async (tx, exp) => {
+    await assertRoomFor(tx, experimentInputs, experimentId, 'inputs');
     const [row] = await tx
       .insert(experimentInputs)
       .values({ orgId: ctx.orgId, experimentId, name: input.name, inputType: input.inputType, identifier: input.identifier ?? null, quantity: input.quantity ?? null, unit: input.unit ?? null, notes: input.notes ?? null, position: await nextPosition(tx, experimentInputs, experimentId), createdBy: ctx.userId })
@@ -165,6 +184,7 @@ const STEP_AUDIT_FIELDS = {
 
 export function addStep(ctx: AuthContext, experimentId: string, input: StepInput) {
   return withEditable(ctx, experimentId, async (tx, exp) => {
+    await assertRoomFor(tx, experimentProtocolSteps, experimentId, 'protocol steps');
     const [row] = await tx
       .insert(experimentProtocolSteps)
       .values({ orgId: ctx.orgId, experimentId, title: input.title, details: input.details ?? null, durationMinutes: input.durationMinutes ?? null, position: await nextPosition(tx, experimentProtocolSteps, experimentId), createdBy: ctx.userId })
@@ -204,6 +224,7 @@ export function deleteStep(ctx: AuthContext, experimentId: string, itemId: strin
 
 export function addObservation(ctx: AuthContext, experimentId: string, input: ObservationInput) {
   return withEditable(ctx, experimentId, async (tx, exp) => {
+    await assertRoomFor(tx, experimentObservations, experimentId, 'observations');
     const [row] = await tx
       .insert(experimentObservations)
       .values({ orgId: ctx.orgId, experimentId, authorId: ctx.userId, body: input.body, significance: input.significance, observedAt: input.observedAt ? new Date(input.observedAt) : new Date() })
@@ -257,6 +278,7 @@ async function assertSampleInOrg(tx: Transaction, ctx: AuthContext, sampleId: st
 
 export function addResult(ctx: AuthContext, experimentId: string, input: ResultInput) {
   return withEditable(ctx, experimentId, async (tx, exp) => {
+    await assertRoomFor(tx, experimentResults, experimentId, 'results');
     if (input.sampleId) await assertSampleInOrg(tx, ctx, input.sampleId);
     const [row] = await tx
       .insert(experimentResults)
@@ -310,6 +332,7 @@ export function deleteResult(ctx: AuthContext, experimentId: string, itemId: str
 
 export function linkSample(ctx: AuthContext, experimentId: string, input: LinkSampleInput) {
   return withEditable(ctx, experimentId, async (tx, exp) => {
+    await assertRoomFor(tx, experimentSamples, experimentId, 'sample links');
     let sampleId = input.sampleId ?? null;
 
     if (input.sample) {

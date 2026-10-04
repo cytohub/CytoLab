@@ -61,6 +61,24 @@ describe('ownership changes (integration)', () => {
     expect(await statusOf(updateProject(owner, project.code, { ownerId: teammate.userId }))).toBe('ok');
     expect(await statusOf(updateProject(admin, project.code, { ownerId: owner.userId }))).toBe('ok');
   });
+
+  it('stops a teammate moving an experiment into their own project to delete it with the project', async () => {
+    const { ws, admin, owner, teammate } = await teamSetup();
+    const project = await createProject(owner, projectInput(owner.userId, ws.teamId));
+    const experiment = await createExperiment(owner, experimentInput(ws, project.id, owner.userId, ws.teamId));
+    await updateExperiment(owner, experiment.id, { status: 'cancelled' });
+    const teammateProject = await createProject(teammate, projectInput(teammate.userId, ws.teamId));
+
+    expect(await statusOf(updateExperiment(teammate, experiment.id, { projectId: teammateProject.id }))).toBe(403);
+    expect(await statusOf(updateExperiment(teammate, experiment.id, { projectId: project.id, notes: 'Same project' }))).toBe('ok');
+    expect(await statusOf(deleteProject(teammate, teammateProject.code))).toBe('ok');
+    expect((await listExperiments(owner, { projectId: [project.id] })).items.map((e) => e.id)).toContain(experiment.id);
+
+    // The researcher and an admin can still move it.
+    const ownerProject = await createProject(owner, projectInput(owner.userId, ws.teamId));
+    expect(await statusOf(updateExperiment(owner, experiment.id, { projectId: ownerProject.id }))).toBe('ok');
+    expect(await statusOf(updateExperiment(admin, experiment.id, { projectId: project.id }))).toBe('ok');
+  });
 });
 
 describe('tags and links (integration)', () => {

@@ -24,6 +24,9 @@ import { logger, type Logger } from '../lib/logger';
 import { enforcePublicDemoWrite } from './public-demo';
 
 const MAX_JSON_BYTES = 1024 * 1024;
+// Every audited write stores its old and new values for good, and anyone can
+// write to a public demo, so its bodies stay small. Typed-in text fits easily.
+const PUBLIC_DEMO_MAX_JSON_BYTES = 32 * 1024;
 const MUTATING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
 /** A handler's return value: data plus optional pagination meta and status. */
@@ -87,23 +90,27 @@ export function assertSameOrigin(req: NextRequest): void {
 /**
  * Whether the browser-set `Origin` names the site this request was addressed
  * to. Behind a TLS-terminating proxy (Railway, Cloudflare, nginx) the server
- * itself sees plain HTTP on an internal address, so hosts are compared with the
- * forwarded host rather than whole origins with the server's own URL. A
+ * itself sees plain HTTP on an internal address, so the origin is compared with
+ * the forwarded host and scheme rather than with the server's own URL. A
  * cross-site page cannot forge either side: browsers set `Origin` themselves,
- * and adding `X-Forwarded-Host` to a cross-origin request would need a CORS
- * preflight this app never approves.
+ * and adding `X-Forwarded-*` headers to a cross-origin request would need a
+ * CORS preflight this app never approves.
  */
 function isSameOrigin(req: NextRequest, origin: string): boolean {
-  if (origin === req.nextUrl.origin || origin === new URL(env().APP_URL).origin) return true;
-  let originHost: string;
+  if (origin === new URL(env().APP_URL).origin) return true;
+  let originUrl: URL;
   try {
-    originHost = new URL(origin).host;
+    originUrl = new URL(origin);
   } catch {
     return false; // e.g. the opaque origin "null"
   }
   const forwardedHost = req.headers.get('x-forwarded-host')?.split(',')[0]!.trim();
-  const host = forwardedHost || req.headers.get('host');
-  return host ? originHost === host.toLowerCase() : false;
+  const host = forwardedHost || req.headers.get('host') || req.nextUrl.host;
+  // The scheme counts too: a page on http://<host> (say, injected by someone on
+  // the visitor's network) is not the https site. Proxies set X-Forwarded-Proto,
+  // and Next.js fills it in from the connection when nothing in front did.
+  const proto = req.headers.get('x-forwarded-proto')?.split(',')[0]!.trim().toLowerCase() || req.nextUrl.protocol.slice(0, -1);
+  return host ? originUrl.host === host.toLowerCase() && originUrl.protocol === `${proto}:` : false;
 }
 
 /** Error bodies list at most this many fields, however many issues a payload has. */
@@ -158,11 +165,13 @@ export async function readBodyCapped(req: Request, maxBytes: number, reportedLim
 }
 
 export async function parseJson<S extends z.ZodType>(req: NextRequest, schema: S): Promise<z.output<S>> {
-  const contentType = req.headers.get('content-type') ?? '';
-  if (!contentType.toLowerCase().includes('application/json')) {
+  // The media type itself, not a substring: `text/plain;charset=application/json`
+  // is a type browsers send cross-site without a CORS preflight.
+  const mediaType = (req.headers.get('content-type') ?? '').split(';')[0]!.trim().toLowerCase();
+  if (mediaType !== 'application/json') {
     throw new UnsupportedMediaTypeError('Send the request body as application/json');
   }
-  const bytes = await readBodyCapped(req, MAX_JSON_BYTES);
+  const bytes = await readBodyCapped(req, env().PUBLIC_DEMO ? PUBLIC_DEMO_MAX_JSON_BYTES : MAX_JSON_BYTES);
 
   let body: unknown;
   try {

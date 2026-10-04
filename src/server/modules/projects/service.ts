@@ -19,7 +19,7 @@ import { escapeLike, isUniqueViolation } from '../../db/sql-utils';
 import { experiments, milestones, projects, researchAreas, teams, users } from '../../db/schema';
 import { registerEntity, setEntityDeleted, syncEntityLabel } from '../../platform/entities';
 import { recordEvent } from '../../platform/events';
-import { indexExperiments, indexProjects } from '../search/indexers';
+import { indexExperiments, indexExperimentsOfProject, indexProjects } from '../search/indexers';
 import { offset, pageMeta, type Paginated } from '../shared/pagination';
 import { changed, isOrgMember, isOrgTeam } from '../shared/references';
 import { toUserSummary, type TeamSummary, type UserSummary } from '../shared/presenters';
@@ -389,7 +389,9 @@ export async function updateProject(ctx: AuthContext, ref: string, input: Update
       });
     }
     await indexProjects(tx, ctx.orgId, [current.id]);
-    if (patch.code) await indexExperiments(tx, ctx.orgId); // experiment subtitles embed the project code
+    // Experiment subtitles embed the project code. The edit form sends the code on
+    // every save, so only a real change, and only this project's experiments.
+    if (changed(patch.code, current.code) !== undefined) await indexExperimentsOfProject(tx, ctx.orgId, current.id);
   });
 
   return getProject(ctx, current.id);
