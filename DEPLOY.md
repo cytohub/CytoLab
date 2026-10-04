@@ -2,14 +2,16 @@
 
 This guide puts CytoLab on `https://cytolab.ai` as a **public demo**:
 
-- anyone can open the site and sign in with one click to the synthetic workspace;
+- anyone can open the site and sign in with one click, as one of five neutral demo accounts (one per role);
 - file uploads and account changes are switched off;
 - each visitor can make at most 100 changes per 10 minutes;
-- every night the database is rebuilt from the seed, which wipes all changes;
+- the workspace starts empty, and every night the database is rebuilt from the seed, which wipes everything visitors created;
 - every morning a scan notifies researchers about experiments that need attention.
 
-All data in the demo is synthetic. The sign-in page and the in-app banner say
-so, and the demo must never be presented as real scientific findings.
+The demo holds no real data: visitors create their own projects and
+experiments, and the sign-in page and in-app banner say it is a demo that
+resets nightly. It must never be presented as real scientific findings. The
+CytoHub team appears as members, but their accounts cannot be signed in to.
 
 To host it on one AWS Lightsail server with the domain in Route 53 instead of
 Railway, follow [`deploy/lightsail/README.md`](deploy/lightsail/README.md).
@@ -125,7 +127,7 @@ you want to deploy new code.
   Pick one to reach the dashboard. The banner ends with "Changes reset every
   night."
 - **Settings**: the profile card is read-only and says why.
-- Any experiment's **Files** tab says uploads are turned off.
+- Create a project and an experiment; the experiment's **Files** tab says uploads are turned off.
 - Creating or editing an experiment still works.
 
 ## 5. Add the nightly reset
@@ -148,8 +150,7 @@ you want to deploy new code.
    Railway cron schedules run in UTC).
 5. Give it no domain and no healthcheck, then **Deploy**.
 
-The reset drops and rebuilds the schema and re-seeds the workspace. Dates in
-the seed are relative to the reset time, so the demo always looks current.
+The reset drops and rebuilds the schema and re-seeds the empty workspace.
 Everyone is signed out at that moment, and requests during the few seconds
 the reset takes may fail. The script refuses to run unless `PUBLIC_DEMO=true`
 and every organization in the database is a demo workspace, so pointing it at

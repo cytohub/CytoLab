@@ -91,7 +91,7 @@ docs/                     architecture (this file)
 drizzle/                  generated SQL migrations (committed, reviewed) + custom SQL (audit trigger)
 scripts/                  db-migrate, db-seed, db-reset, db-grant, jobs-attention-scan
   lib/                    destructive-run guard, owner/app database URLs
-  seed/                   synthetic demo catalog and generator
+  seed/                   demo workspace: members, demo sign-ins, configuration
   docker/                 container entry point, test-database init
 src/
   proxy.ts                per-request CSP nonce, www redirect, session-cookie refresh
@@ -388,7 +388,7 @@ citations, and tool definitions generated from the API's Zod schemas.
 
 | Phase | Scope |
 | --- | --- |
-| **1 — Dashboard (this build)** | Overview, projects, experiments workspace, timeline, progress analytics, activity, search, notifications, users/teams, RBAC, audit log, synthetic demo data. |
+| **1 — Dashboard (this build)** | Overview, projects, experiments workspace, timeline, progress analytics, activity, search, notifications, users/teams, RBAC, audit log, an empty public demo workspace. |
 | 2 — Experiment management | Experiment templates per type, protocol library with versions, tasks, board view, saved views, bulk edit, @mentions, project-level permissions, cross-organization invitations with acceptance and an organization switcher, API tokens, email notifications, CSV export. |
 | 3 — Scientific data & samples | Sample registry UI, sample types with schemas, containers & storage, aliquots, lineage graph, inventory/reagents, datasets & measurements, instrument file parsing, S3 storage. |
 | 4 — Collaborative R&D | Block-based ELN with version history, review/approval workflows, e-signatures (21 CFR Part 11), real-time co-editing, SSO/SAML/SCIM, Postgres RLS, outbox + workers. |
@@ -408,7 +408,7 @@ citations, and tool definitions generated from the API's Zod schemas.
 | First-party auth carries security responsibility | Small, well-tested surface; standard primitives; SSO provider planned for enterprise. |
 | Computed progress/health may not match a PI's judgement | Rules are transparent (reasons shown in UI) and unit-tested; manual health updates planned. |
 | Fixed workflow enums | Adding values is a migration; configurable workflows are a Phase 2 table. |
-| Synthetic demo data mistaken for real findings | Org flagged `is_demo`; persistent in-app banner; seeded names and files marked synthetic. |
+| Demo content mistaken for real findings, or posted under a real person's name | Org flagged `is_demo`; persistent in-app banner; no research data is seeded; visitors sign in only as neutral demo accounts, and real members' accounts cannot be signed in to. |
 | Demo accounts share a published password | Demo workspaces are closed in production unless `PUBLIC_DEMO=true`; a real deployment starts on a new database. |
 | Rate limits and the scrypt queue are per instance | One replica in V1 (`DEPLOY.md`); a shared store such as Redis before scaling out. |
 | A compromised app could rewrite history | The app's database role cannot update, delete or truncate audit rows or drop their triggers; migrations run as a separate owner. |

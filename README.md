@@ -5,9 +5,9 @@ Dashboard**, built on a foundation designed to grow into a full scientific R&D
 operating system — experiment management, sample and data management, an
 electronic lab notebook, and a permission-aware AI layer — without a rewrite.
 
-> **Demo data is synthetic.** The seeded organization, people, experiments and
-> results are fictional and generated to exercise the product. They are not real
-> scientific findings.
+> **The demo starts empty.** It holds no research data: visitors sign in with
+> neutral demo accounts and create their own projects and experiments, which the
+> nightly reset removes. Nothing in it is a real scientific finding.
 
 ## What's in V1
 
@@ -54,9 +54,10 @@ pnpm db:seed                  # load the synthetic demo workspace
 pnpm dev                      # http://localhost:3000
 ```
 
-On the sign-in page, pick a demo account (or use any seeded email with the
-password `cytolab-demo`) to explore the different roles — Admin, Lab Manager,
-Scientist, Researcher, Viewer. In production mode (`pnpm start`, Docker) the
+On the sign-in page, pick a demo account (or sign in as
+`demo-<role>@cytohub.example` with the password `cytolab-demo`) to explore the
+different roles — Admin, Lab Manager, Scientist, Researcher, Viewer. The other
+listed members cannot be signed in to. In production mode (`pnpm start`, Docker) the
 demo workspace opens only with `PUBLIC_DEMO=true`.
 
 ## Scripts
