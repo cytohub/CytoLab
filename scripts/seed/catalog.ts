@@ -9,7 +9,7 @@
 import type { InputType, Priority, ProjectStatus } from '../../src/domain/enums';
 import type { ColorToken } from '../../src/domain/schemas/common';
 
-export const ORG = { name: 'Acme Biosciences', slug: 'acme-bio', timezone: 'America/New_York' };
+export const ORG = { name: 'CytoHub', slug: 'cytohub', timezone: 'America/New_York' };
 export const DEMO_PASSWORD = 'cytolab-demo';
 
 export interface PersonSeed {
@@ -23,22 +23,22 @@ export interface PersonSeed {
 }
 
 export const PEOPLE: PersonSeed[] = [
-  { key: 'sarah', name: 'Dr. Sarah Chen', email: 'sarah.chen@acme-bio.example', title: 'Director of Research', role: 'admin', color: 'blue', teams: [{ team: 'cell', lead: true }] },
-  { key: 'john', name: 'John Smith', email: 'john.smith@acme-bio.example', title: 'Lab Operations Manager', role: 'lab_manager', color: 'teal', teams: [{ team: 'analytical' }] },
-  { key: 'priya', name: 'Dr. Priya Raman', email: 'priya.raman@acme-bio.example', title: 'Principal Scientist', role: 'scientist', color: 'violet', teams: [{ team: 'nad', lead: true }] },
-  { key: 'marcus', name: 'Dr. Marcus Okafor', email: 'marcus.okafor@acme-bio.example', title: 'Senior Scientist', role: 'scientist', color: 'pink', teams: [{ team: 'tissue', lead: true }] },
-  { key: 'elena', name: 'Dr. Elena Vasquez', email: 'elena.vasquez@acme-bio.example', title: 'Principal Scientist', role: 'scientist', color: 'green', teams: [{ team: 'genome', lead: true }] },
-  { key: 'kenji', name: 'Dr. Kenji Watanabe', email: 'kenji.watanabe@acme-bio.example', title: 'Senior Scientist', role: 'scientist', color: 'amber', teams: [{ team: 'biomat', lead: true }] },
-  { key: 'grace', name: 'Dr. Grace Adeyemi', email: 'grace.adeyemi@acme-bio.example', title: 'Scientist, Analytical Sciences', role: 'scientist', color: 'indigo', teams: [{ team: 'analytical', lead: true }] },
-  { key: 'aisha', name: 'Aisha Rahman', email: 'aisha.rahman@acme-bio.example', title: 'Research Associate II', role: 'researcher', color: 'orange', teams: [{ team: 'cell' }] },
-  { key: 'lucas', name: 'Lucas Meyer', email: 'lucas.meyer@acme-bio.example', title: 'Research Associate', role: 'researcher', color: 'slate', teams: [{ team: 'cell' }] },
-  { key: 'hannah', name: 'Hannah Kim', email: 'hannah.kim@acme-bio.example', title: 'Senior Research Associate', role: 'researcher', color: 'red', teams: [{ team: 'nad' }] },
-  { key: 'diego', name: 'Diego Alvarez', email: 'diego.alvarez@acme-bio.example', title: 'Research Associate', role: 'researcher', color: 'blue', teams: [{ team: 'nad' }] },
-  { key: 'olivia', name: 'Olivia Brooks', email: 'olivia.brooks@acme-bio.example', title: 'Research Scientist', role: 'researcher', color: 'violet', teams: [{ team: 'tissue' }] },
-  { key: 'samuel', name: 'Samuel Osei', email: 'samuel.osei@acme-bio.example', title: 'Research Associate', role: 'researcher', color: 'teal', teams: [{ team: 'genome' }] },
-  { key: 'mei', name: 'Mei Lin', email: 'mei.lin@acme-bio.example', title: 'Senior Research Associate', role: 'researcher', color: 'pink', teams: [{ team: 'genome' }] },
-  { key: 'noah', name: 'Noah Fischer', email: 'noah.fischer@acme-bio.example', title: 'Research Associate', role: 'researcher', color: 'green', teams: [{ team: 'biomat' }] },
-  { key: 'tom', name: 'Tom Becker', email: 'tom.becker@acme-bio.example', title: 'VP, Program Management', role: 'viewer', color: 'slate', teams: [] },
+  { key: 'sarah', name: 'Dr. Sarah Chen', email: 'sarah.chen@cytohub.example', title: 'Director of Research', role: 'admin', color: 'blue', teams: [{ team: 'cell', lead: true }] },
+  { key: 'john', name: 'John Smith', email: 'john.smith@cytohub.example', title: 'Lab Operations Manager', role: 'lab_manager', color: 'teal', teams: [{ team: 'analytical' }] },
+  { key: 'priya', name: 'Dr. Priya Raman', email: 'priya.raman@cytohub.example', title: 'Principal Scientist', role: 'scientist', color: 'violet', teams: [{ team: 'nad', lead: true }] },
+  { key: 'marcus', name: 'Dr. Marcus Okafor', email: 'marcus.okafor@cytohub.example', title: 'Senior Scientist', role: 'scientist', color: 'pink', teams: [{ team: 'tissue', lead: true }] },
+  { key: 'elena', name: 'Dr. Elena Vasquez', email: 'elena.vasquez@cytohub.example', title: 'Principal Scientist', role: 'scientist', color: 'green', teams: [{ team: 'genome', lead: true }] },
+  { key: 'kenji', name: 'Dr. Kenji Watanabe', email: 'kenji.watanabe@cytohub.example', title: 'Senior Scientist', role: 'scientist', color: 'amber', teams: [{ team: 'biomat', lead: true }] },
+  { key: 'grace', name: 'Dr. Grace Adeyemi', email: 'grace.adeyemi@cytohub.example', title: 'Scientist, Analytical Sciences', role: 'scientist', color: 'indigo', teams: [{ team: 'analytical', lead: true }] },
+  { key: 'aisha', name: 'Aisha Rahman', email: 'aisha.rahman@cytohub.example', title: 'Research Associate II', role: 'researcher', color: 'orange', teams: [{ team: 'cell' }] },
+  { key: 'lucas', name: 'Lucas Meyer', email: 'lucas.meyer@cytohub.example', title: 'Research Associate', role: 'researcher', color: 'slate', teams: [{ team: 'cell' }] },
+  { key: 'hannah', name: 'Hannah Kim', email: 'hannah.kim@cytohub.example', title: 'Senior Research Associate', role: 'researcher', color: 'red', teams: [{ team: 'nad' }] },
+  { key: 'diego', name: 'Diego Alvarez', email: 'diego.alvarez@cytohub.example', title: 'Research Associate', role: 'researcher', color: 'blue', teams: [{ team: 'nad' }] },
+  { key: 'olivia', name: 'Olivia Brooks', email: 'olivia.brooks@cytohub.example', title: 'Research Scientist', role: 'researcher', color: 'violet', teams: [{ team: 'tissue' }] },
+  { key: 'samuel', name: 'Samuel Osei', email: 'samuel.osei@cytohub.example', title: 'Research Associate', role: 'researcher', color: 'teal', teams: [{ team: 'genome' }] },
+  { key: 'mei', name: 'Mei Lin', email: 'mei.lin@cytohub.example', title: 'Senior Research Associate', role: 'researcher', color: 'pink', teams: [{ team: 'genome' }] },
+  { key: 'noah', name: 'Noah Fischer', email: 'noah.fischer@cytohub.example', title: 'Research Associate', role: 'researcher', color: 'green', teams: [{ team: 'biomat' }] },
+  { key: 'tom', name: 'Tom Becker', email: 'tom.becker@cytohub.example', title: 'VP, Program Management', role: 'viewer', color: 'slate', teams: [] },
 ];
 
 export const TEAMS: Array<{ key: string; name: string; description: string; color: ColorToken }> = [
