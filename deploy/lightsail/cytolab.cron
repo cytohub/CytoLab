@@ -2,8 +2,13 @@
 # Install as the ubuntu user with: crontab ~/cytolab/deploy/lightsail/cytolab.cron
 # (this replaces that user's crontab).
 
-# 04:00 rebuild the public demo with fresh synthetic data.
+# 04:00 empty the public demo again, removing whatever visitors created.
 0 4 * * * cd /home/ubuntu/cytolab/deploy/lightsail && docker compose run --rm -T web pnpm db:reset >> /home/ubuntu/cytolab-jobs.log 2>&1
 
 # 04:30 send needs-attention notifications (at most one per experiment per day).
-30 4 * * * cd /home/ubuntu/cytolab/deploy/lightsail && docker compose run --rm -T web pnpm jobs:attention >> /home/ubuntu/cytolab-jobs.log 2>&1
+# It needs only the app's own connection, so the owner login is left out.
+30 4 * * * cd /home/ubuntu/cytolab/deploy/lightsail && docker compose run --rm -T -e MIGRATION_DATABASE_URL= web pnpm jobs:attention >> /home/ubuntu/cytolab-jobs.log 2>&1
+
+# Sundays 05:00 pick up security updates: fresh Caddy and PostgreSQL images, and
+# a rebuild of the app on the latest Node base image.
+0 5 * * 0 cd /home/ubuntu/cytolab/deploy/lightsail && { docker compose pull -q --ignore-buildable && docker compose build -q --pull && docker compose up -d && docker image prune -f; } >> /home/ubuntu/cytolab-jobs.log 2>&1
