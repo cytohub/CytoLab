@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 
-const DEMO_EMAIL = 'sarah.chen@acme-bio.example';
+const DEMO_EMAIL = 'sarah.chen@cytohub.example';
 const DEMO_PASSWORD = 'cytolab-demo';
 
 async function signIn(page: Page) {

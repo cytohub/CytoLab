@@ -15,7 +15,7 @@ describe('demo seed (integration)', () => {
   it('leaves the counters past the seeded numbers, so new experiments and samples can be created', async () => {
     await seedDemoData();
 
-    const [org] = await db().select().from(organizations).where(eq(organizations.slug, 'acme-bio'));
+    const [org] = await db().select().from(organizations).where(eq(organizations.slug, 'cytohub'));
     const [admin] = await db()
       .select({ id: users.id, name: users.name, email: users.email })
       .from(orgMemberships)
