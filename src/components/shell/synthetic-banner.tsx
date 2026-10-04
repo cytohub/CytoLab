@@ -26,7 +26,7 @@ export function SyntheticDataBanner({ resetsNightly = false }: { resetsNightly?:
   return (
     <div className="flex items-center justify-center gap-2 border-b border-[color:var(--tone-amber-fg)]/20 bg-[var(--tone-amber-bg)] px-4 py-1.5 text-center text-xs text-[color:var(--tone-amber-fg)]">
       <span>
-        <strong className="font-semibold">Demo workspace.</strong> All projects, experiments, people and results are synthetic — not real scientific data.
+        <strong className="font-semibold">Demo workspace.</strong> All projects, experiments and results are synthetic — not real scientific data.
         {resetsNightly && ' Changes reset every night.'}
       </span>
       <button

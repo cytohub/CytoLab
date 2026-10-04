@@ -154,7 +154,7 @@ You should see these lines, then press Ctrl+C:
 ```
 ✔ Migrations applied
 ✔ Granted row access to cytolab_app
-✔ Seeded demo workspace: 7 projects, 132 experiments, 16 users, 420 activity events
+✔ Seeded demo workspace: 7 projects, 132 experiments, 8 users, 420 activity events
 ✓ Ready in …
 ```
 
